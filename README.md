@@ -7,12 +7,13 @@ Simple tests are at the bottom of the file.
 
 #### Hashmaps
 
-Implemented a bitmap trie hashmap and normal linear hashmap.
+Implemented a bitmap trie hashmap and normal linear java-style hashmap.
 You can specialize these maps by passing in a hash provider to their constructors - tested out
 different hash methods.
 
 Turns out a really simple change in cljs.core/hash will speed it up in numerical cases by quite
-a lot.
+a lot - put the numeric case above the generic protocol dispatch.  This has zero detrimental
+effect to other cases but does speed up numeric cases by about 5x.
 
 
 ```clojure
