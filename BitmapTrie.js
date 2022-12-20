@@ -408,10 +408,12 @@ class Map {
 	return n.v;
     }
     computeIfPresent(k, bifn) {
-	let n = this.getOrCreate(k);
-	if(n.v != null)
+	let n = this.getNode(k);
+	if(n != null) {
 	    n.v = f(k,n.v);
-	return n.v;
+	    return n.v;
+	}
+	return null;
     }
     compute(k, bifn) {
 	let n = this.getOrCreate(k);
