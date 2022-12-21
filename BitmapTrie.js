@@ -420,6 +420,13 @@ class Map {
 	n.v = bifn(k, n.v);
 	return n.v;
     }
+    call(m, ...args) {
+	if(args.length == 1)
+	    return this.get(args[0]);
+	if(args.length == 2)
+	    return this.getOrDefault(args[0], args[1]);
+	throw Error("Invalid invocation");
+    }
     meta() { return this.meta; }
     withMeta(m) {
 	let retval = this.shallowClone();
@@ -704,6 +711,51 @@ function makeHashTable(hashProvider, capacity, loadFactor) {
 }
 
 
+
+function mapProxy(m) {
+    return new Proxy(m, {
+	get(target, key) {
+	    return target.get(key);
+	},
+	set(target, key, value) {
+	    n = target.getOrCreate(key);
+	    n.v = value;
+	    return n.v;
+	},
+	deleteProperty(target, key) {
+	    return target.remove(key);
+	},
+	ownKeys(target) {
+	    return target.reduce((acc,v)=>{acc.push(v.getKey()); return acc}, Array());
+	},
+	has(target, key) {
+	    return target.containsKey(key);
+	},
+	defineProperty(target, key, descriptor) {
+	    if (descriptor && "value" in descriptor) {
+		target.put(key, descriptor.value);
+	    }
+	    return target;
+	},
+	getOwnPropertyDescriptor(target, key) {
+	    let n = target.getNode(key);
+	    return n != null ? {
+		value: n.v,
+		writable: true,
+		enumerable: true,
+		configurable: true,
+	    } : undefined;
+	},
+	apply(target, ...args) {
+	    if(args.length == 1)
+		return target.get(args[0]);
+	    if(args.length == 2)
+		return target.getOrDefault(args[0], args[1]);
+	}
+    });
+}
+
+
 module.exports.mask = mask;
 module.exports.bitpos = bitpos;
 module.exports.bitIndex = bitIndex;
@@ -712,3 +764,4 @@ module.exports.insert = insert;
 module.exports.defaultHash = defaultHash;
 module.exports.makeTrie = makeBitmapTrie;
 module.exports.makeHashTable = makeHashTable;
+module.exports.mapProxy = mapProxy;
