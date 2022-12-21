@@ -96,6 +96,40 @@ function removeEntry(data, index, nElems, forceCopy) {
 }
 
 
+
+let m3_seed = 0
+let m3_C1 = 0xcc9e2d51 | 0
+let m3_C2 = 0x1b873593 | 0
+
+function rotLeft(val, amt) {
+    return val << amt | val >>> (32-amt);
+}
+
+function m3_mix_K1(k1) {
+    return Math.imul(m3_C2, rotLeft(Math.imul((k1 | 0), m3_C1), 15));
+}
+
+function m3_mix_H1(h1, k1) {
+    return (0xe6546b64 | 0) + Math.imul(5, rotLeft((h1 | 0) ^ (k1 | 0), 14));
+}
+
+// (defn ^number m3-fmix [h1 len]
+//   (as-> (int h1) h1
+//     (bit-xor h1 len)
+//     (bit-xor h1 (unsigned-bit-shift-right h1 16))
+//     (imul h1 (int 0x85ebca6b))
+//     (bit-xor h1 (unsigned-bit-shift-right h1 13))
+//     (imul h1 (int 0xc2b2ae35))
+//     (bit-xor h1 (unsigned-bit-shift-right h1 16))))
+
+// (defn ^number m3-hash-int [in]
+//   (if (zero? in)
+//     in
+//     (let [k1 (m3-mix-K1 in)
+//           h1 (m3-mix-H1 m3-seed k1)]
+//       (m3-fmix h1 4))))
+
+
 class LeafNode {
     constructor(owner, k, v, hash, nextNode) {
 	this.owner = owner;
@@ -433,6 +467,17 @@ class Map {
 	retval.meta = m;
 	return retval;
     }
+    [Symbol.iterator]() {
+        let iter = this.iterator();
+	let valary = (e) => Array(e.getKey(), e.getValue());
+        return {
+            next: () => {
+		let hn = iter.hasNext();
+		return ({value: hn ? valary(iter.next()) : undefined,
+			 done: !hn});
+	    }
+        }
+    }
     toString() {
 	return this.reduce((acc, v) => { return (acc.length == 1) ?
 					 acc + v.getKey() + " " + v.getValue() :
@@ -765,3 +810,6 @@ module.exports.defaultHash = defaultHash;
 module.exports.makeTrie = makeBitmapTrie;
 module.exports.makeHashTable = makeHashTable;
 module.exports.mapProxy = mapProxy;
+module.exports.rotLeft = rotLeft;
+module.exports.m3_mix_K1 = m3_mix_K1;
+module.exports.m3_mix_H1 = m3_mix_H1;

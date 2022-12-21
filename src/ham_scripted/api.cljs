@@ -29,6 +29,7 @@
 (def ^:private bm-cons (aget bm-module "makeTrie"))
 (def ^:private ht-cons (aget bm-module "makeHashTable"))
 (def ^:private mapProxy (aget bm-module "mapProxy"))
+(def ^:private rot-left (aget bm-module "rotLeft"))
 
 (defn reduce-put!
   ([m data]
