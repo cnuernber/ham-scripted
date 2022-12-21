@@ -16,10 +16,10 @@ a lot - put the numeric case above the generic protocol dispatch.  This has zero
 effect to other cases but does speed up numeric cases by about 5x.
 
 
-You can emulate both function assoc and transient assoc by using `shallowClone` -
+You can emulate both functional assoc and transient assoc! by using `shallowClone` -
 
-* function assoc - `(fn [m k v] (-> (.shallowClone ^JS m) (.mutAssoc k v)))`
-* transient assoc reduction - `(reduce (fn [m [k v]] (.mutAssoc ^JS m k v)) (.shallowClone m) data)`
+* functional assoc - `(fn [m k v] (-> (.shallowClone ^JS m) (.mutAssoc k v)))`
+* transient assoc! reduction - `(reduce (fn [m [k v]] (.mutAssoc ^JS m k v)) (.shallowClone m) data)`
 
 
 
