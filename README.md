@@ -39,9 +39,15 @@ You can emulate both function assoc and transient assoc by using `shallowClone` 
 
 
 ```console
-clj -M:cljs :node-repl
+clj -M:cljs node-repl
 
 # Then cider-connect to localhost:8777
+
+
+cljs.user=>
+shadow.user> (shadow/repl :node-repl)
+shadow-cljs - #4 ready!
+To quit, type: :cljs/quit
 ```
 
 ## License
