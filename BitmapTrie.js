@@ -177,10 +177,32 @@ function consumerAccum(acc, v) {
     acc.accept(v); return acc;
 }
 
-function tmap(f, r) {
+function array_reduce(rfn, init, coll) {
+    let l = coll.length | 0;
+    for(let idx = 0; idx < l; ++idx)
+	init = rfn(init, coll[idx]);
+}
+
+function reduce(rfn, init, coll) {
+    if(coll == null) {
+	return init;
+    }
+    else if(Array.isArray(coll)) {
+	return array_reduce(rfn, init, coll)
+    } else if(typeof(coll.reduce) === 'function') {
+	return coll.reduce(rfn,init);
+    } else {
+	for(const v of coll) {
+	    init = rfn(init, v);
+	}
+	return init;
+    }
+}
+
+function lznc_map(f, r) {
     return {
 	reduce(rfn, acc) {
-	    return r.reduce((acc,v) => rfn(acc, f(v)), acc);
+	    return reduce((acc,v) => rfn(acc, f(v)), acc, r);
 	},
 	[Symbol.iterator]() {
 	    let iter = r[Symbol.iterator]();
@@ -193,18 +215,6 @@ function tmap(f, r) {
             }
 	}
     };
-}
-
-
-function reduce(rfn, init, coll) {
-    if(coll == null) return init;
-    let r = coll["reduce"];
-    if(typeof r === 'function')
-	return coll.reduce(rfn,init);
-    for(const v of coll) {
-	init = rfn(init, v);
-    }
-    return init;
 }
 
 function hash_ordered(hash, coll) {
@@ -938,3 +948,5 @@ module.exports.hash_unordered = hash_unordered;
 module.exports.mix_collection_hash = mix_collection_hash;
 module.exports.objHashCode = objHashCode
 module.exports.reduce = reduce;
+module.exports.array_reduce = array_reduce;
+module.exports.defaultProvider = defaultProvider;

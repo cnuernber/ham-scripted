@@ -43,6 +43,16 @@ class ChunkedVector {
 	data[Math.floor(l/32)][l%32] = v;
 	this.length++;
     }
+    get(idx) {
+	if(idx >= this.length)
+	    throw Error("Index out of range: " + idx + " : " + this.length);
+	return this.data[Math.floor(idx/32)|0][idx%32];
+    }
+    set(idx,v) {
+	if(idx >= this.length)
+	    throw Error("Index out of range: " + idx + " : " + this.length);
+	this.data[Math.floor(idx/32)|0][idx%32] = v;
+    }
     addAll(newData) {
 	if(newData == null) return;
 	let sz = sizeIfPossible(newData);
@@ -85,18 +95,38 @@ class ChunkedVector {
     toString() {
 	return this.reduce((acc,v) => acc + (acc.length > 1 ? ", " + v : v), "[") + "]";
     }
-    reduce(rfn, acc) {
-	let isReduced = this.hp.isReduced;
-	let l = this.length;
-	let d = this.data;
-	for (let idx = 0; idx < l && !isReduced(acc); idx += 32) {
-	    let chunk = d[Math.floor(idx/32) | 0];
-	    let clen = Math.min(chunk.length, l-idx);
-	    for(let cidx = 0; cidx < clen && !isReduced(acc); ++cidx) {
-		acc = rfn(acc, chunk[cidx]);
+    reduce(rfn, init) {
+	const isReduced = this.hp.isReduced;
+	const l = this.length;
+	const d = this.data;
+	const nc = Math.ceil(l/32) | 0;
+	let acc = init;
+	if(isReduced(acc))
+	    return this.up.unreduce(acc);
+	for (let idx = 0; idx < nc; ++idx) {
+	    const chunk = d[idx];
+	    const clen = Math.min(32, l-(idx*32)) | 0;
+	    for(let cidx = 0; cidx < clen; ++cidx) {
+	     	acc = rfn(acc, chunk[cidx]);
+		if(isReduced(acc))
+		    return this.hp.unreduce(acc);
 	    }
 	}
-	return this.hp.unreduce(acc);
+	return acc;
+    }
+    [Symbol.iterator]() {
+	let l = this.length;
+	let idx = 0;
+	let data = this.data;
+        return {
+	    next: () => {
+		let done = idx >= l;
+		let rv = ({value: done ? undefined : data[Math.floor(idx/32)][idx%32],
+			   done: done});
+		++idx;
+		return rv;
+	    }
+        }
     }
     toArray() {
 	let data = this.data;
@@ -106,6 +136,10 @@ class ChunkedVector {
     }
 }
 
+function addVal(lhs, rhs) {
+    return lhs + rhs;
+}
 module.exports.indexedAccum = indexedAccum;
 module.exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
 module.exports.sizeIfPossible = sizeIfPossible;
+module.exports.addVal = addVal;

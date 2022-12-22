@@ -21,6 +21,8 @@
     :else
     (hash item)))
 
+(def raw-provider (aget bm-module "defaultProvider"))
+
 (def default-provider (js-obj "hash" fhash
                               "equals" =
                               "isReduced" reduced?
@@ -103,7 +105,7 @@
                data)))))
 
 (defn mut-list
-  ([] (cv-cons default-provider))
+  ([] (cv-cons defaul-provider))
   ([data] (doto (cv-cons default-provider)
             (.addAll data))))
 

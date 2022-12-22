@@ -35,6 +35,38 @@ You can emulate both functional assoc and transient assoc! by using `shallowClon
 ```
 
 
+#### Iteresting Findings
+
+There is a pretty heavy penality for using cljs functions from javascript -
+
+ ```clojure
+ham-scripted.api> (def m (mut-list (range 100000)))
+#'ham-scripted.api/m
+ham-scripted.api> (dotimes [idx 10]
+                    (time (.reduce m js-add 0)))
+...
+"Elapsed time: 0.275752 msecs"
+"Elapsed time: 0.368628 msecs"
+ham-scripted.api> (dotimes [idx 10]
+                    (time (.reduce m + 0)))
+...
+"Elapsed time: 6.119186 msecs"
+"Elapsed time: 6.293762 msecs"
+nil
+ ```
+
+That penalty doesn't go away after you have used the cljs method - the reduce callsite
+appears to 'remember' that a not-true-js method was used here:
+
+```clojure
+ham-scripted.api> (dotimes [idx 10]
+                    (time (.reduce m js-add 0)))
+...
+"Elapsed time: 1.276535 msecs"
+"Elapsed time: 1.357354 msecs"
+"Elapsed time: 1.731493 msecs"
+```
+
 ## Development
 
 
