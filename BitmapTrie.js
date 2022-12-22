@@ -102,32 +102,124 @@ let m3_C1 = 0xcc9e2d51 | 0
 let m3_C2 = 0x1b873593 | 0
 
 function rotLeft(val, amt) {
-    return val << amt | val >>> (32-amt);
+    return val << amt | val >>> (32 - amt);
 }
 
 function m3_mix_K1(k1) {
     return Math.imul(m3_C2, rotLeft(Math.imul((k1 | 0), m3_C1), 15));
 }
 
+
+// (defn ^number m3-mix-H1 [h1 k1]
+//   (int (-> (int h1) (bit-xor (int k1)) (int-rotate-left 13) (imul 5) (+ (int 0xe6546b64)))))
 function m3_mix_H1(h1, k1) {
-    return (0xe6546b64 | 0) + Math.imul(5, rotLeft((h1 | 0) ^ (k1 | 0), 14));
+    return ((0xe6546b64 | 0) + Math.imul(5, rotLeft((h1 | 0) ^ (k1 | 0), 13))) | 0;
 }
 
-// (defn ^number m3-fmix [h1 len]
-//   (as-> (int h1) h1
-//     (bit-xor h1 len)
-//     (bit-xor h1 (unsigned-bit-shift-right h1 16))
-//     (imul h1 (int 0x85ebca6b))
-//     (bit-xor h1 (unsigned-bit-shift-right h1 13))
-//     (imul h1 (int 0xc2b2ae35))
-//     (bit-xor h1 (unsigned-bit-shift-right h1 16))))
 
-// (defn ^number m3-hash-int [in]
-//   (if (zero? in)
-//     in
-//     (let [k1 (m3-mix-K1 in)
-//           h1 (m3-mix-H1 m3-seed k1)]
-//       (m3-fmix h1 4))))
+function m3_fmix(h1, len) {
+    let s0 = ((h1 | 0) ^ len);
+    let s1 = s0 ^ (s0 >>> 16);
+    let s2 = Math.imul(s1, (0x85ebca6b | 0));
+    let s3 = s2 ^ (s2 >>> 13);
+    let s4 = Math.imul(s3, (0xc2b2ae35 | 0));
+    return s4 ^ (s4 >>> 16);
+}
+
+function mix_collection_hash(hashBasis, count) {
+    let h1 = m3_seed;
+    let k1 = m3_mix_K1(hashBasis);
+    let hh1 = m3_mix_H1(h1, k1);
+    return m3_fmix(hh1, count);
+}
+
+function objHashCode(hashfn, obj) {
+    if(typeof(obj.hashCode) === "function")
+	return obj.hashCode();
+    else if (Array.isArray(obj))
+	return hash_ordered(hashfn, obj);
+    else if ((obj instanceof Map) || (obj instanceof Set))
+	return hash_unordered(hashfn, obj);
+    return hashfn(obj);
+}
+
+class UnorderedCollHasher {
+    constructor(hash) {
+	this.n = 0;
+	this.hashCode = 0;
+	this.hash = hash;
+    }
+    accept(val) {
+	this.n++;
+	this.hashCode = (this.hashCode + objHashCode(this.hash, val)) | 0;
+    }
+    deref() {
+	return mix_collection_hash(this.hashCode, this.n);
+    }
+}
+
+class OrderedCollHasher {
+    constructor(hash) {
+	this.n = 0;
+	this.hashCode = 1;
+	this.hash = hash;
+    }
+    accept(val) {
+	this.n++;
+	this.hashCode = (Math.imul(31, this.hashCode) + objHashCode(this.hash, val)) | 0;
+    }
+    deref() {
+	return mix_collection_hash(this.hashCode, this.n);
+    }
+}
+
+function consumerAccum(acc, v) {
+    acc.accept(v); return acc;
+}
+
+function tmap(f, r) {
+    return {
+	reduce(rfn, acc) {
+	    return r.reduce((acc,v) => rfn(acc, f(v)), acc);
+	},
+	[Symbol.iterator]() {
+	    let iter = r[Symbol.iterator]();
+            return {
+		next: () => {
+		    let rv = iter.next();
+		    return ({value: rv.done ? undefined : f(rv.value),
+			     done: rv.done});
+		}
+            }
+	}
+    };
+}
+
+
+function reduce(rfn, init, coll) {
+    if(coll == null) return init;
+    let r = coll["reduce"];
+    if(typeof r === 'function')
+	return coll.reduce(rfn,init);
+    for(const v of coll) {
+	init = rfn(init, v);
+    }
+    return init;
+}
+
+function hash_ordered(hash, coll) {
+    return reduce(consumerAccum, new OrderedCollHasher(hash), coll).deref();
+}
+
+function hash_unordered(hash, coll) {
+    return reduce(consumerAccum, new UnorderedCollHasher(hash), coll).deref();
+}
+
+function cache_hash_unordered(coll) {
+    if(coll._hash == null)
+	coll._hash = hash_unordered(coll) | 0;
+    return coll._hash;
+}
 
 
 class LeafNode {
@@ -145,6 +237,11 @@ class LeafNode {
 	return new LeafNode(owner, k, k, hash, null);
     }
     toString() { return "LeafNode: " + this.k + " " + this.hashcode; }
+    hashCode() {
+	let p = this;
+	return hash_ordered(this.owner.hash,
+			    {reduce(rfn,acc) { return rfn(rfn(acc,p.k), p.v); }});
+    }
     getKey() { return this.k; }
     getValue() { return this.v; }
     get(idx) {
@@ -418,10 +515,63 @@ class BitmapNode {
 }
 
 
+function mapProxy(m) {
+    return new Proxy(m, {
+	get(target, key) {
+	    return target.get(key);
+	},
+	set(target, key, value) {
+	    n = target.getOrCreate(key);
+	    n.v = value;
+	    return n.v;
+	},
+	deleteProperty(target, key) {
+	    return target.remove(key);
+	},
+	ownKeys(target) {
+	    return target.reduce((acc,v)=>{acc.push(v.getKey()); return acc}, Array());
+	},
+	has(target, key) {
+	    return target.containsKey(key);
+	},
+	defineProperty(target, key, descriptor) {
+	    if (descriptor && "value" in descriptor) {
+		target.put(key, descriptor.value);
+	    }
+	    return target;
+	},
+	getOwnPropertyDescriptor(target, key) {
+	    let n = target.getNode(key);
+	    return n != null ? {
+		value: n.v,
+		writable: true,
+		enumerable: true,
+		configurable: true,
+	    } : undefined;
+	},
+	apply(target, ...args) {
+	    if(args.length == 1)
+		return target.get(args[0]);
+	    if(args.length == 2)
+		return target.getOrDefault(args[0], args[1]);
+	}
+    });
+}
+
+
 //marker iface
-class Map {
+class MapBase {
     size() { return this.count; }
     isEmpty() { return this.count == 0; }
+    asObject() { return mapProxy(this); }
+    hashCode() {
+	let p = this;
+	//Specialized pathway because leaves implement hashCode.  js Arrays return a random
+	//number every time hash is called.
+	return hash_unordered(this.hash, {reduce(rfn, acc) {
+	    return p.reduceLeaves(rfn,acc);
+	}});
+    }
     put(k,v) {
 	let lf = this.getOrCreate(k);
 	lf.v = v;
@@ -478,16 +628,21 @@ class Map {
 	    }
         }
     }
+
+    reduce(rfn, acc) {
+	return this.reduceLeaves((acc, v)=>rfn(acc, Array(v.getKey(), v.getValue())), acc);
+    }
+
     toString() {
-	return this.reduce((acc, v) => { return (acc.length == 1) ?
-					 acc + v.getKey() + " " + v.getValue() :
-					 acc + ", " + v.getKey() + " " + v.getValue()},
-			   "{") + "}";
+	return this.reduceLeaves((acc, v) => { return (acc.length == 1) ?
+					       acc + v.getKey() + " " + v.getValue() :
+					       acc + ", " + v.getKey() + " " + v.getValue()},
+				 "{") + "}";
     }
 };
 
 
-class BitmapTrie extends Map {
+class BitmapTrie extends MapBase {
     constructor(hashProvider, nullLeaf, root, count) {
 	super();
 	this.hp = hashProvider;
@@ -520,7 +675,7 @@ class BitmapTrie extends Map {
 	    return this.nullLeaf;
 	return this.root.getNode(k, 0, hash);
     }
-    reduce(rfn, acc) {
+    reduceLeaves(rfn, acc) {
 	let isReduced = this.hp.isReduced;
 	let unreduce = this.hp.unreduce;
 	if(this.nullEntry != null && !isReduced(acc))
@@ -587,7 +742,7 @@ function makeBitmapTrie(hashProvider) {
     return BitmapTrie.newTrie(hashProvider);
 }
 
-class HashTable extends Map {
+class HashTable extends MapBase {
     constructor(hashProvider, loadFactor, initialCapacity, count, data) {
 	super();
 	this.loadFactor = loadFactor;
@@ -733,7 +888,7 @@ class HashTable extends Map {
 	};
 	return new TableIter(this.data);
     }
-    reduce(rfn, acc) {
+    reduceLeaves(rfn, acc) {
 	let isReduced = this.hp.isReduced;
 	let data = this.data;
 	let nData = data.length;
@@ -756,51 +911,6 @@ function makeHashTable(hashProvider, capacity, loadFactor) {
 }
 
 
-
-function mapProxy(m) {
-    return new Proxy(m, {
-	get(target, key) {
-	    return target.get(key);
-	},
-	set(target, key, value) {
-	    n = target.getOrCreate(key);
-	    n.v = value;
-	    return n.v;
-	},
-	deleteProperty(target, key) {
-	    return target.remove(key);
-	},
-	ownKeys(target) {
-	    return target.reduce((acc,v)=>{acc.push(v.getKey()); return acc}, Array());
-	},
-	has(target, key) {
-	    return target.containsKey(key);
-	},
-	defineProperty(target, key, descriptor) {
-	    if (descriptor && "value" in descriptor) {
-		target.put(key, descriptor.value);
-	    }
-	    return target;
-	},
-	getOwnPropertyDescriptor(target, key) {
-	    let n = target.getNode(key);
-	    return n != null ? {
-		value: n.v,
-		writable: true,
-		enumerable: true,
-		configurable: true,
-	    } : undefined;
-	},
-	apply(target, ...args) {
-	    if(args.length == 1)
-		return target.get(args[0]);
-	    if(args.length == 2)
-		return target.getOrDefault(args[0], args[1]);
-	}
-    });
-}
-
-
 module.exports.mask = mask;
 module.exports.bitpos = bitpos;
 module.exports.bitIndex = bitIndex;
@@ -813,3 +923,8 @@ module.exports.mapProxy = mapProxy;
 module.exports.rotLeft = rotLeft;
 module.exports.m3_mix_K1 = m3_mix_K1;
 module.exports.m3_mix_H1 = m3_mix_H1;
+module.exports.m3_fmix = m3_fmix;
+module.exports.hash_ordered = hash_ordered;
+module.exports.hash_unordered = hash_unordered;
+module.exports.mix_collection_hash = mix_collection_hash;
+module.exports.objHashCode = objHashCode
