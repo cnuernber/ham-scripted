@@ -105,7 +105,7 @@
                data)))))
 
 (defn mut-list
-  ([] (cv-cons defaul-provider))
+  ([] (cv-cons default-provider))
   ([data] (doto (cv-cons default-provider)
             (.addAll data))))
 

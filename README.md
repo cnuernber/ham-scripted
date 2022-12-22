@@ -37,7 +37,9 @@ You can emulate both functional assoc and transient assoc! by using `shallowClon
 
 #### Iteresting Findings
 
-There is a pretty heavy penality for using cljs functions from javascript -
+These findings so far are likely Node/V8 specific - 
+
+There is a pretty heavy penality for using at least some cljs functions from javascript -
 
  ```clojure
 ham-scripted.api> (def m (mut-list (range 100000)))
@@ -66,6 +68,12 @@ ham-scripted.api> (dotimes [idx 10]
 "Elapsed time: 1.357354 msecs"
 "Elapsed time: 1.731493 msecs"
 ```
+
+There is also a penalty if you use a *different* pure-js method.  Then the optimizations 
+back off to if you the last case above.  So if I have defined a pure js method, js-sub, 
+and I do a reduce with js-sub and then js-add the timings will be about 1.3ms or so -- 
+*not* 0.2ms or so.
+
 
 ## Development
 

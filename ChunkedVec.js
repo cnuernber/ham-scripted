@@ -142,4 +142,5 @@ function addVal(lhs, rhs) {
 module.exports.indexedAccum = indexedAccum;
 module.exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
 module.exports.sizeIfPossible = sizeIfPossible;
-module.exports.addVal = addVal;
+module.exports.addVal = (a,b) => a + b;
+module.exports.decVal = (a,b) => a - b;
