@@ -1,0 +1,111 @@
+let bm = require("./BitmapTrie.js");
+
+
+function indexedAccum(rf, inN) {
+    let n = (inN != null ? inN : 0) | 0;
+    return (acc,v) => rf(acc,n++,v);
+}
+
+function sizeIfPossible(arg) {
+    if(arg.length) return arg.length;
+    if(typeof(arg.size) === "function") return arg.size();
+    return null;
+}
+
+class ChunkedVector {
+    constructor(hp) {
+	this.hp = hp;
+	this.length = 0;
+	this.capacity = 0;
+	this.data = Array();
+    }
+    size() { return this.length; }
+    ensureCapacity(newLen) {
+	if(newLen > this.capacity) {
+	    newLen = newLen <= 32 ? bm.nextPow2(Math.max(4, newLen)) : (32 * Math.ceil(newLen/32)) | 0;
+	    let nChunks = Math.floor((newLen+31) / 32) | 0;
+	    let oldNChunks = Math.floor((this.length+31)/32) | 0;
+	    this.data.length = nChunks;
+	    for(let idx = oldNChunks; idx < nChunks; ++idx) {
+		let curChunk = this.data[idx];
+		let nextLen = idx == nChunks-1 ? newLen % 32 : 32;
+		let nextChunk = curChunk == null ? Array(nextLen) : bm.copyOf(curChunk, nextLen);
+		nextChunk.owner = this;
+		this.data[idx] = nextChunk;
+	    }
+	    this.capacity = newLen;
+	}
+	return this.data;
+    }
+    add(v) {
+	let l = this.length;
+	let data = this.ensureCapacity(l+1);
+	data[Math.floor(l/32)][l%32] = v;
+	this.length++;
+    }
+    addAll(newData) {
+	if(newData == null) return;
+	let sz = sizeIfPossible(newData);
+	let len = this.length;
+	if(sz) {
+	    let nl = len + sz;
+	    if(Array.isArray(newData)) {
+		let newDLen = Math.ceil(nl/32) | 0;
+		let data = this.data;
+		data.length = newDLen;
+		for(let idx = len; idx < nl; idx += 32) {
+		    let cidx = Math.floor(idx/32)|0;
+		    let cstart = idx % 32;
+		    let clen = Math.min(32-cstart, nl - idx);
+		    let chunk = data[cidx];
+		    let doff = idx - len;
+		    let dchunk = newData.slice(doff, doff+clen);
+		    if(chunk != null) {
+			//resize chunk
+			chunk.length = cstart;
+			for(let lidx = 0; lidx < clen; ++lidx)
+			    chunk.push(dchunk[lidx])
+		    } else {
+			data[cidx] = dchunk;
+		    }
+		    //mod32 align idx
+		    idx -= cstart;
+		}
+	    } else {
+		let data = this.ensureCapacity(nl);
+		bm.reduce(indexedAccum((data,idx,v)=> { let ll = len + idx;
+							data[Math.floor(ll/32)][ll%32] = v;
+							return data}), data, newData);
+	    }
+	    this.length = nl;
+	} else {
+	    bm.reduce((cv,v) => { cv.add(v); return cv}, this, newData);
+	}
+    }
+    toString() {
+	return this.reduce((acc,v) => acc + (acc.length > 1 ? ", " + v : v), "[") + "]";
+    }
+    reduce(rfn, acc) {
+	let isReduced = this.hp.isReduced;
+	let l = this.length;
+	let d = this.data;
+	for (let idx = 0; idx < l && !isReduced(acc); idx += 32) {
+	    let chunk = d[Math.floor(idx/32) | 0];
+	    let clen = Math.min(chunk.length, l-idx);
+	    for(let cidx = 0; cidx < clen && !isReduced(acc); ++cidx) {
+		acc = rfn(acc, chunk[cidx]);
+	    }
+	}
+	return this.hp.unreduce(acc);
+    }
+    toArray() {
+	let data = this.data;
+	return this.reduce(indexedAccum((rv,idx,v)=> {
+	    rv[idx] = v; return rv;
+	}), Array(this.length));
+    }
+}
+
+module.exports.indexedAccum = indexedAccum;
+module.exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
+module.exports.sizeIfPossible = sizeIfPossible;

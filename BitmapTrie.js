@@ -576,6 +576,7 @@ class MapBase {
 	let lf = this.getOrCreate(k);
 	lf.v = v;
     }
+    set(k,v) { put(k,v); }
     get(k) {
 	let lf = this.getNode(k);
 	return lf != null ? lf.v : null;
@@ -585,6 +586,8 @@ class MapBase {
 	return lf != null ? lf.v : d;
     }
     containsKey(k) { return this.getNode(k) != null; }
+    has(k) { return containsKey(k); }
+    delete(k) { return remove(k); }
     computeIfAbsent(k, f) {
 	let n = this.getOrCreate(k);
 	if(n.v == null)
@@ -603,6 +606,11 @@ class MapBase {
 	let n = this.getOrCreate(k);
 	n.v = bifn(k, n.v);
 	return n.v;
+    }
+    forEach(cback) {
+	let m = this;
+	this.reduceLeaves((cback, e)=>{cback(e.getValue(), e.getKey(), m); return cback},
+			  cback);
     }
     call(m, ...args) {
 	if(args.length == 1)
@@ -911,6 +919,7 @@ function makeHashTable(hashProvider, capacity, loadFactor) {
 }
 
 
+module.exports.copyOf = copyOf;
 module.exports.mask = mask;
 module.exports.bitpos = bitpos;
 module.exports.bitIndex = bitIndex;
@@ -928,3 +937,4 @@ module.exports.hash_ordered = hash_ordered;
 module.exports.hash_unordered = hash_unordered;
 module.exports.mix_collection_hash = mix_collection_hash;
 module.exports.objHashCode = objHashCode
+module.exports.reduce = reduce;

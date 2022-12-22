@@ -1,5 +1,5 @@
 (ns ham-scripted.api
-  (:refer-clojure :exclude [frequencies]))
+  (:refer-clojure :exclude [frequencies object-array]))
 
 
 (defn- reload-module
@@ -9,6 +9,7 @@
 
 
 (def bm-module (reload-module "./BitmapTrie.js"))
+(def cv-module (reload-module "./ChunkedVec.js"))
 
 (defn fhash
   "Faster hash method specifically for numbers - comparisons are reordered."
@@ -30,6 +31,7 @@
 (def ^:private ht-cons (aget bm-module "makeHashTable"))
 (def ^:private mapProxy (aget bm-module "mapProxy"))
 (def ^:private rot-left (aget bm-module "rotLeft"))
+(def indexedAccum (aget cv-module "indexedAccum"))
 
 (defn reduce-put!
   ([m data]
@@ -73,6 +75,37 @@
   ([xform data] (frequencies xform nil data))
   ([xform options data]
    (transduce xform (freq-rf options) data)))
+
+
+(def ^:private cv-cons (aget cv-module "makeChunkedVec"))
+(def ^:private sizeIfPossible (aget cv-module "sizeIfPossible"))
+(def ^:private idxAcc (aget cv-module "indexedAccum"))
+
+(defn indexed-acc-fn
+  [rf]
+  (idxAcc rf))
+
+(defn object-array
+  ([] (js/Array))
+  ([data]
+   (cond
+     (nil? data)
+     (js/Array)
+     (.-toArray ^JS data)
+     (.toArray ^JS data)
+     :else
+     (if-let [sz (sizeIfPossible data)]
+       (reduce (indexed-acc-fn (fn [acc idx v] (aset acc idx v) acc))
+               (js/Array sz)
+               data)
+       (reduce (indexed-acc-fn (fn [acc idx v] (.push acc v) acc))
+               (js/Array)
+               data)))))
+
+(defn mut-list
+  ([] (cv-cons default-provider))
+  ([data] (doto (cv-cons default-provider)
+            (.addAll data))))
 
 
 (comment
