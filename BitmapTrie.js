@@ -177,13 +177,21 @@ function consumerAccum(acc, v) {
     acc.accept(v); return acc;
 }
 
+function twoArgInvoker(rfn) {
+    return rfn.cljs$core$IFn$_invoke$arity$2 ?
+	rfn.cljs$core$IFn$_invoke$arity$2 : rfn;
+}
+
 function array_reduce(rfn, init, coll) {
     let l = coll.length | 0;
+    let invoker = twoArgInvoker(rfn)
     for(let idx = 0; idx < l; ++idx)
-	init = rfn(init, coll[idx]);
+	init = invoker(init, coll[idx]);
+    return init;
 }
 
 function reduce(rfn, init, coll) {
+    rfn = twoArgInvoker(rfn);
     if(coll == null) {
 	return init;
     }
@@ -950,3 +958,4 @@ module.exports.objHashCode = objHashCode
 module.exports.reduce = reduce;
 module.exports.array_reduce = array_reduce;
 module.exports.defaultProvider = defaultProvider;
+module.exports.twoArgInvoker = twoArgInvoker;

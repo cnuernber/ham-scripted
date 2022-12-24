@@ -110,6 +110,21 @@
             (.addAll data))))
 
 
+
+(defn reduce-plus
+  [m]
+  (reduce + 0 m))
+
+
+(defn test-reduce
+  [f acc m]
+  (loop [acc acc
+         m (seq m)]
+    (if m
+      (recur (f acc (first m)) (rest m))
+      acc)))
+
+
 (comment
   (dotimes [idx 10] (time (cljs.core/frequencies (eduction (map #(rem % 373373)) (range 1000000)))))
   ;;averages about 1220ms

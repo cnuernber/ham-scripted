@@ -35,11 +35,10 @@ You can emulate both functional assoc and transient assoc! by using `shallowClon
 ```
 
 
-#### Iteresting Findings
+#### Clojure Variadic Functions from Javascript
 
-These findings so far are likely Node/V8 specific -
-
-There is a pretty heavy penality for using at variadic cljs functions during reductions -
+There is a pretty heavy penality for using at variadic cljs functions from js in a tight loop
+with a fixed arity - for instance if we implement reduce in javascript.
 
  ```clojure
 ham-scripted.api> (def m (mut-list (range 100000)))
@@ -58,7 +57,8 @@ nil
  ```
 
 That penalty doesn't go away after you have used the cljs method - the reduce callsite
-appears to 'remember' that a not-true-js method was used here:
+appears to 'remember' that more than one function method was used here and backs off to
+an intermediate optimization level:
 
 ```clojure
 ham-scripted.api> (dotimes [idx 10]
@@ -69,70 +69,7 @@ ham-scripted.api> (dotimes [idx 10]
 "Elapsed time: 1.731493 msecs"
 ```
 
-There is also a penalty if you use a *different* pure-js method.  Then the optimizations
-back off to the last case above.  So if I have defined a pure js method, js-sub,
-and I do a reduce with js-sub and then js-add the timings will be about 1.3ms or so --
-*not* 0.2ms or so.
-
-
-Recompiling the namespace resets the optimization pathway, the reduction with a pure
-js add or subtract pathway will have the top performance falling off apparently permanently
-to the second tier if a second js method is used.
-
-
-```clojure
-
-ham-scripted.api> (def m (mut-list (range 100000)))
-#'ham-scripted.api/m
-ham-scripted.api> (dotimes [idx 10]
-                    (time (.reduce m (aget cv-module "addVal") 0)))
-"Elapsed time: 0.286648 msecs"
-"Elapsed time: 0.286395 msecs"
-"Elapsed time: 0.285851 msecs"
-nil
-
-ham-scripted.api> (dotimes [idx 10]
-                    (time (.reduce m (aget cv-module "decVal") 0)))
-...
-"Elapsed time: 2.230094 msecs"
-"Elapsed time: 1.950038 msecs"
-"Elapsed time: 1.376309 msecs"
-nil
-ham-scripted.api> (dotimes [idx 10]
-                    (time (.reduce m (aget cv-module "addVal") 0)))
-...
-"Elapsed time: 2.520038 msecs"
-"Elapsed time: 1.942071 msecs"
-"Elapsed time: 2.385680 msecs"
-nil
-
-ham-scripted.api> (def js-add (aget cv-module "addVal"))
-#'ham-scripted.api/js-add
-ham-scripted.api> js-add
-#object[Function]
-ham-scripted.api> (dotimes [idx 10]
-                    (time (.reduce m (fn [a b](js-add a b)) 0)))
-...
-"Elapsed time: 2.942858 msecs"
-"Elapsed time: 2.331446 msecs"
-"Elapsed time: 2.718734 msecs"
-nil
-ham-scripted.api> (dotimes [idx 10]
-                    (time (.reduce m (fn [a b](+ a b)) 0)))
-...
-"Elapsed time: 2.815240 msecs"
-"Elapsed time: 2.119683 msecs"
-"Elapsed time: 2.691423 msecs"
-nil
-ham-scripted.api> (dotimes [idx 10]
-                    (time (.reduce m + 0)))
-...
-"Elapsed time: 7.024980 msecs"
-"Elapsed time: 6.695283 msecs"
-"Elapsed time: 6.730351 msecs"
-```
-
-This penalty isn't there from Clojure, however:
+Interestingly enough, this penalty doesn't exist from Clojure itself -
 
 ```clojure
 
@@ -155,7 +92,10 @@ nil
 ```
 
 But the Clojure pathway never hits the fragile fastpath.
-After a restart:
+After a restart - in this case I think because PersistentVector's reduce is called
+in order to load the namespace itself so there is never a single-function callsite
+of reduce:
+
 
 ```clojure
 ham-scripted.api> (def v (vec (range 100000)))
@@ -195,6 +135,23 @@ ham-scripted.api> (dotimes [idx 10]
 "Elapsed time: 0.246565 msecs"
 nil
 ```
+
+
+The simple work around is, if like in reduce you are going to repeatedly call a function
+of known arity is to lookup the statically defined version:
+
+```clojure
+function twoArgInvoker(rfn) {
+    return rfn.cljs$core$IFn$_invoke$arity$2 ?
+	rfn.cljs$core$IFn$_invoke$arity$2 : rfn;
+}
+```
+
+
+This makes the Clojure vararg function with a 2 arg arity perform exactly the same
+as a pure-js function in a tight reduction from javascript.
+
+
 
 ## Development
 

@@ -96,6 +96,7 @@ class ChunkedVector {
 	return this.reduce((acc,v) => acc + (acc.length > 1 ? ", " + v : v), "[") + "]";
     }
     reduce(rfn, init) {
+	rfn = bm.twoArgInvoker(rfn);
 	const isReduced = this.hp.isReduced;
 	const l = this.length;
 	const d = this.data;
