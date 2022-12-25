@@ -1,10 +1,12 @@
 let bm = require("./BitmapTrie.js");
 
 
-function indexedAccum(rf, inN) {
+function indexedAccum(rfn, inN) {
     let n = (inN != null ? inN : 0) | 0;
+    const rf = bm.threeArgInvoker(rfn);
     return (acc,v) => rf(acc,n++,v);
 }
+
 
 function sizeIfPossible(arg) {
     if(arg.length) return arg.length;
@@ -140,8 +142,108 @@ class ChunkedVector {
 function addVal(lhs, rhs) {
     return lhs + rhs;
 }
+
+class Range {
+    constructor(start,end,step,hp) {
+	this.start = start;
+	this.end = end;
+	this.step = step;
+	this.length = Math.max(0, Math.floor((end-start)/step));
+	this.hp = hp;
+    }
+    hashCode() { return bm.cached_ordered(this.hp.hash, this); }
+    size() { return this.length; }
+    reduce(rfn,acc) {
+	const isReduced = this.hp.isReduced;
+	const unreduce = this.hp.unreduce;
+	const invoker = bm.twoArgInvoker(rfn);
+	const l = this.length;
+	const start = this.start;
+	const step = this.step;
+	for(let idx = 0; idx < l && !isReduced(acc); ++idx)
+	    acc = invoker(acc, start+(step*idx));
+	return unreduce(acc);
+    }
+    [Symbol.iterator]() {
+	const l = this.length;
+	const start = this.start;
+	const step = this.step;
+	let idx = 0;
+	return {
+	    next: () => {
+		let done = idx >= l;
+		let rv = ({value: done ? undefined : start+(step*idx),
+			   done: done});
+		++idx;
+		return rv;
+	    }
+	}
+    }
+}
+
+
+function range(start,end,step,hp) {
+    return new Range(start,end,step,hp);
+}
+
+
+class Sum {
+    constructor() {
+	this.n = 0;
+	this.s = 0;
+    }
+    accept(v) { this.n++; this.s += v; }
+    deref() { return this; }
+}
+
+class MMaxKey {
+    constructor(ifn) {
+	this.k = null;
+	this.v = null;
+	this.ifn = bm.oneArgInvoker(ifn);
+    }
+    accept(v) {
+	if(this.k == null) {
+	    this.k = this.ifn(v);
+	    this.v = v;
+	} else {
+	    const kk = this.ifn(v);
+	    if(kk >= this.k) {
+		this.k = kk;
+		this.v = v;
+	    }
+	}
+    }
+    deref() { return this.v; }
+}
+
+class MMinKey {
+    constructor(ifn) {
+	this.k = null;
+	this.v = null;
+	this.ifn = bm.oneArgInvoker(ifn);
+    }
+    accept(v) {
+	if(this.k == null) {
+	    this.k = this.ifn(v);
+	    this.v = v;
+	} else {
+	    const kk = this.ifn(v);
+	    if(kk <= this.k) {
+		this.k = kk;
+		this.v = v;
+	    }
+	}
+    }
+    deref() { return this.v; }
+}
+
 module.exports.indexedAccum = indexedAccum;
 module.exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
 module.exports.sizeIfPossible = sizeIfPossible;
 module.exports.addVal = (a,b) => a + b;
 module.exports.decVal = (a,b) => a - b;
+module.exports.range = range;
+module.exports.sum = () => new Sum();
+module.exports.mmax_key = (fn) => new MMaxKey(fn);
+module.exports.mmin_key = (fn) => new MMinKey(fn);

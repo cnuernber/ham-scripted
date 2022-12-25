@@ -34,6 +34,60 @@ You can emulate both functional assoc and transient assoc! by using `shallowClon
   ;;averages about 130ms
 ```
 
+#### group-by-reducer
+
+Perform a reduction during a group-by.  Takes a transducer-compatible reducer.
+
+
+```clojure
+
+ham-scripted.api> (dotimes [idx 10]
+                    (time (group-by-reducer #(rem % 3733) + (range 100000))))
+
+"Elapsed time: 10.176957 msecs"
+"Elapsed time: 9.623497 msecs"
+"Elapsed time: 12.023776 msecs"
+nil
+
+(defn group-by-reducer-cljs
+  [key-fn reducer coll]
+  (->> (group-by key-fn coll)
+       (into {} (map (fn [[k v]] [k (-> (reduce reducer (reducer) v)
+                                        (reducer))])))))
+
+
+ham-scripted.api> (dotimes [idx 10]
+                    (time (group-by-reducer-cljs #(rem % 3733) + (cljs.core/range 100000))))
+"Elapsed time: 118.711570 msecs"
+"Elapsed time: 119.257793 msecs"
+"Elapsed time: 124.406629 msecs"
+nil
+```
+
+
+#### mean compared to kixi.stats.core/mean
+
+
+```clojure
+ham-scripted.api> (dotimes [idx 10]
+                    (time (mean (cljs.core/range 100000))))
+"Elapsed time: 1.832255 msecs"
+"Elapsed time: 1.740176 msecs"
+"Elapsed time: 1.855512 msecs"
+;; ham-scripted has a faster range object
+ham-scripted.api> (dotimes [idx 10]
+                    (time (mean (range 100000))))
+"Elapsed time: 1.066491 msecs"
+"Elapsed time: 1.059102 msecs"
+"Elapsed time: 1.040609 msecs"
+;; (require '[kixi.stats.core :as k])
+ham-scripted.api> (dotimes [idx 10]
+                    (time (k/mean (reduce k/mean (k/mean) (cljs.core/range 100000)))))
+"Elapsed time: 15.579152 msecs"
+"Elapsed time: 14.381574 msecs"
+"Elapsed time: 15.699436 msecs"
+```
+
 
 #### Clojure Variadic Functions from Javascript
 

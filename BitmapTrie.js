@@ -13,6 +13,12 @@ const cyrb53 = (str, seed = 0) => {
   return (h1 >>> 0);
 }
 
+function sizeIfPossible(arg) {
+    if(arg.length) return arg.length;
+    if(typeof(arg.size) === "function") return arg.size();
+    return null;
+}
+
 
 function mixHash(hash) {
     return (hash >>> 0) ^ hash >>> 16;
@@ -177,10 +183,18 @@ function consumerAccum(acc, v) {
     acc.accept(v); return acc;
 }
 
-function twoArgInvoker(rfn) {
-    return rfn.cljs$core$IFn$_invoke$arity$2 ?
-	rfn.cljs$core$IFn$_invoke$arity$2 : rfn;
+function oneArgInvoker(rfn) {
+    return rfn.cljs$core$IFn$_invoke$arity$1 ? rfn.cljs$core$IFn$_invoke$arity$1 : rfn;
 }
+
+function twoArgInvoker(rfn) {
+    return rfn.cljs$core$IFn$_invoke$arity$2 ? rfn.cljs$core$IFn$_invoke$arity$2 : rfn;
+}
+
+function threeArgInvoker(rfn) {
+    return rfn.cljs$core$IFn$_invoke$arity$3 ? rfn.cljs$core$IFn$_invoke$arity$3 : rfn;
+}
+
 
 function array_reduce(rfn, init, coll) {
     let l = coll.length | 0;
@@ -229,6 +243,12 @@ function hash_ordered(hash, coll) {
     return reduce(consumerAccum, new OrderedCollHasher(hash), coll).deref();
 }
 
+function cache_ordered(hash, coll) {
+    if(coll._hash == null)
+	coll._hash = hash_ordered(hash, coll);
+    return coll._hash;
+}
+
 function hash_unordered(hash, coll) {
     return reduce(consumerAccum, new UnorderedCollHasher(hash), coll).deref();
 }
@@ -237,6 +257,46 @@ function cache_hash_unordered(coll) {
     if(coll._hash == null)
 	coll._hash = hash_unordered(coll) | 0;
     return coll._hash;
+}
+
+let LFPPRops = ["length", "0", "1", "toString"];
+
+class LFP {
+    get(target, key) {
+	switch(key) {
+	case "length": return 2;
+	case "0": return target.k;
+	case "1": return target.v;
+	case "hashCode" : return () => target.hashCode();
+	case "toString": return () => "[" + target.k + " " + target.v + "]";
+	};
+	return undefined;
+    }
+    ownKeys(target) {
+	return LFPprops;
+    }
+    has(target, key) {
+	return LFPprops.contains(key);
+    }
+    getOwnPropertyDescriptor(target, key) {
+	switch(key) {
+	case "length": return { value: 2, writable: false,
+				enumerable: true, configurable: true};
+	case "0": return {value: target.k, writable: false,
+			  enumerable: true, configurable: true}
+	case "1": return {value: target.v, writable: false,
+			  enumerable: true, configurable: true}
+	case "toString": return {value: this.get(target, "toString"), writable: false,
+				 enumerable: true, configurable: true}
+	case "hashCode": return {value: this.get(target, "hashCode"), writable: false,
+				 enumerable: true, configurable: true}
+	}
+	return undefined;
+    }
+}
+
+function leafProxy(lf) {
+    return new Proxy(lf, new LFP());
 }
 
 
@@ -252,7 +312,12 @@ class LeafNode {
     }
     static newNode(owner, k, hash) {
 	owner.incLeaf();
-	return new LeafNode(owner, k, k, hash, null);
+	return new LeafNode(owner, k, null, hash, null);
+    }
+    asObject() {
+	if(this.proxy == null)
+	    this.proxy = leafProxy(this);
+	return this.proxy;
     }
     toString() { return "LeafNode: " + this.k + " " + this.hashcode; }
     hashCode() {
@@ -581,7 +646,11 @@ function mapProxy(m) {
 class MapBase {
     size() { return this.count; }
     isEmpty() { return this.count == 0; }
-    asObject() { return mapProxy(this); }
+    asObject() {
+	if(this.proxy == null)
+	    this.proxy = mapProxy(this);
+	return this.proxy;
+    }
     hashCode() {
 	let p = this;
 	//Specialized pathway because leaves implement hashCode.  js Arrays return a random
@@ -654,7 +723,6 @@ class MapBase {
 	    }
         }
     }
-
     reduce(rfn, acc) {
 	return this.reduceLeaves((acc, v)=>rfn(acc, Array(v.getKey(), v.getValue())), acc);
     }
@@ -937,6 +1005,53 @@ function makeHashTable(hashProvider, capacity, loadFactor) {
 }
 
 
+function identityGroupByRfn(initFn, reducer) {
+    const rfn = (k,v)=>reducer(v == null ? initFn() : v, k);
+    return (m,v)=>{m.compute(v, rfn); return m;}
+}
+
+function keyFnGroupByRfn(keyFn, initFn, reducer) {
+    return (m,v)=>{m.compute(keyFn(v), (k,vv)=>reducer(vv == null ? initFn() : vv, v));
+		   return m;}
+}
+
+
+function groupByReduce(mapFn, keyFn, initFn, rfn, finFn, coll) {
+    const invoker = twoArgInvoker(rfn);
+    const rf = keyFn == null ? identityGroupByRfn(oneArgInvoker(initFn),invoker)
+	  : keyFnGroupByRfn(oneArgInvoker(keyFn), oneArgInvoker(initFn), invoker);
+    const rv = reduce(rf, mapFn(), coll);
+    const ff = finFn == null ? null : oneArgInvoker(finFn);
+    return ff == null ? rv : rv.reduceLeaves((acc,n)=>{n.v = ff(n.v); return acc}, rv);
+}
+
+
+function lznc_map_1(f, arg) {
+    class Map1Impl {
+	reduce (rfn, init) {
+	    rfn = twoArgInvoker(rfn);
+	    return reduce((acc,v)=>rfn(acc, f(v)), init, arg)
+	}
+	[Symbol.iterator]() {
+	    let iter = arg[Symbol.iterator]();
+	    return {
+		next: () => {
+		    let rv = iter.next();
+		    return ({done: rv.done,
+			     value: rv.done ? undefined : f(rv.value)
+			    });
+		}
+	    };
+	}
+    }
+    const rv = new Map1Impl();
+    let s = sizeIfPossible(arg);
+    if (s != null)
+	rv.length = s;
+    return rv;
+}
+
+
 module.exports.copyOf = copyOf;
 module.exports.mask = mask;
 module.exports.bitpos = bitpos;
@@ -952,10 +1067,15 @@ module.exports.m3_mix_K1 = m3_mix_K1;
 module.exports.m3_mix_H1 = m3_mix_H1;
 module.exports.m3_fmix = m3_fmix;
 module.exports.hash_ordered = hash_ordered;
+module.exports.cache_ordered = cache_ordered;
 module.exports.hash_unordered = hash_unordered;
 module.exports.mix_collection_hash = mix_collection_hash;
 module.exports.objHashCode = objHashCode
 module.exports.reduce = reduce;
 module.exports.array_reduce = array_reduce;
 module.exports.defaultProvider = defaultProvider;
+module.exports.groupByReduce = groupByReduce;
+module.exports.oneArgInvoker = oneArgInvoker;
 module.exports.twoArgInvoker = twoArgInvoker;
+module.exports.threeArgInvoker = threeArgInvoker;
+module.exports.lznc_map_1 = lznc_map_1;
