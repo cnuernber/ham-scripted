@@ -8,12 +8,6 @@ function indexedAccum(rfn, inN) {
 }
 
 
-function sizeIfPossible(arg) {
-    if(arg.length) return arg.length;
-    if(typeof(arg.size) === "function") return arg.size();
-    return null;
-}
-
 class ChunkedVector {
     constructor(hp) {
 	this.hp = hp;
@@ -57,7 +51,7 @@ class ChunkedVector {
     }
     addAll(newData) {
 	if(newData == null) return;
-	let sz = sizeIfPossible(newData);
+	let sz = bm.sizeIfPossible(newData);
 	let len = this.length;
 	if(sz) {
 	    let nl = len + sz;
@@ -85,13 +79,14 @@ class ChunkedVector {
 		}
 	    } else {
 		let data = this.ensureCapacity(nl);
-		bm.reduce(indexedAccum((data,idx,v)=> { let ll = len + idx;
+		bm.reduce(null,
+			  indexedAccum((data,idx,v)=> { let ll = len + idx;
 							data[Math.floor(ll/32)][ll%32] = v;
 							return data}), data, newData);
 	    }
 	    this.length = nl;
 	} else {
-	    bm.reduce((cv,v) => { cv.add(v); return cv}, this, newData);
+	    bm.reduce(null, (cv,v) => { cv.add(v); return cv}, this, newData);
 	}
     }
     toString() {
@@ -240,7 +235,6 @@ class MMinKey {
 
 module.exports.indexedAccum = indexedAccum;
 module.exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
-module.exports.sizeIfPossible = sizeIfPossible;
 module.exports.addVal = (a,b) => a + b;
 module.exports.decVal = (a,b) => a - b;
 module.exports.range = range;

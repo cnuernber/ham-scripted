@@ -2,7 +2,9 @@
  ;;We serialize datasets to transit-json
  :deps {}
  :aliases
- {:cljs
+ {:dev
+  {:extra-deps {kixi/stats {:mvn/version "0.5.5"}}}
+  :cljs
   {:extra-deps {thheller/shadow-cljs {:mvn/version "2.12.4"}
                 cider/cider-nrepl {:mvn/version "0.28.5"}
                 cljs-ajax/cljs-ajax {:mvn/version "0.8.3"}

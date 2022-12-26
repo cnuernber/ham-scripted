@@ -1,6 +1,5 @@
-const cyrb53 = (str, seed = 0) => {
-  let h1 = 0xdeadbeef ^ seed,
-    h2 = 0x41c6ce57 ^ seed;
+function cyrb53(str, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
   for (let i = 0, ch; i < str.length; i++) {
     ch = str.charCodeAt(i);
     h1 = Math.imul(h1 ^ ch, 2654435761);
@@ -14,8 +13,13 @@ const cyrb53 = (str, seed = 0) => {
 }
 
 function sizeIfPossible(arg) {
+    if(arg == null) return 0;
     if(arg.length) return arg.length;
-    if(typeof(arg.size) === "function") return arg.size();
+    const sz = arg.size;
+    if(sz != null) {
+	if(typeof(sz) === "function") return arg.size();
+	return sz;
+    }
     return null;
 }
 
@@ -102,10 +106,9 @@ function removeEntry(data, index, nElems, forceCopy) {
 }
 
 
-
-let m3_seed = 0
-let m3_C1 = 0xcc9e2d51 | 0
-let m3_C2 = 0x1b873593 | 0
+const m3_seed = 0
+const m3_C1 = 0xcc9e2d51 | 0
+const m3_C2 = 0x1b873593 | 0
 
 function rotLeft(val, amt) {
     return val << amt | val >>> (32 - amt);
@@ -115,9 +118,6 @@ function m3_mix_K1(k1) {
     return Math.imul(m3_C2, rotLeft(Math.imul((k1 | 0), m3_C1), 15));
 }
 
-
-// (defn ^number m3-mix-H1 [h1 k1]
-//   (int (-> (int h1) (bit-xor (int k1)) (int-rotate-left 13) (imul 5) (+ (int 0xe6546b64)))))
 function m3_mix_H1(h1, k1) {
     return ((0xe6546b64 | 0) + Math.imul(5, rotLeft((h1 | 0) ^ (k1 | 0), 13))) | 0;
 }
@@ -195,69 +195,255 @@ function threeArgInvoker(rfn) {
     return rfn.cljs$core$IFn$_invoke$arity$3 ? rfn.cljs$core$IFn$_invoke$arity$3 : rfn;
 }
 
+function iterReduce(hp, rfn, acc, coll) {
+    const invoker = twoArgInvoker(rfn);
+    const isReduced = hp.isReduced;
+    const unreduce = hp.unreduce;
+    if(isReduced(acc)) return unreduce(acc);
+    if(typeof(coll.next) == "function") {
+	for(i = coll.next(); !i.done; i = coll.next()) {
+	    acc = invoker(acc, i.value);
+	    if(isReduced(acc)) return unreduce(acc);
+	}
+    } else {
+	for(const c of coll) {
+	    acc = invoker(acc, c);
+	    if(isReduced(acc)) return unreduce(acc);
+	}
+    }
+    return acc;
+}
 
-function array_reduce(rfn, init, coll) {
+
+function arrayReduce(hp, rfn, acc, coll) {
     let l = coll.length | 0;
     let invoker = twoArgInvoker(rfn)
-    for(let idx = 0; idx < l; ++idx)
-	init = invoker(init, coll[idx]);
-    return init;
+    const isReduced = hp.isReduced;
+    const unreduce = hp.unreduce;
+    for(let idx = 0; idx < l && !isReduced(acc); ++idx)
+	acc = invoker(acc, coll[idx]);
+    return unreduce(acc);
 }
 
-function reduce(rfn, init, coll) {
-    rfn = twoArgInvoker(rfn);
-    if(coll == null) {
-	return init;
-    }
-    else if(Array.isArray(coll)) {
-	return array_reduce(rfn, init, coll)
-    } else if(typeof(coll.reduce) === 'function') {
-	return coll.reduce(rfn,init);
-    } else {
-	for(const v of coll) {
-	    init = rfn(init, v);
-	}
-	return init;
-    }
+
+function reduce(hp, rfn, acc, coll) {
+    hp = hp == null ? defaultProvider : hp;
+    if(coll == null) return hp.unreduce(acc);
+    if(Array.isArray(coll)) return arrayReduce(hp, rfn, acc, coll);
+    if(typeof(coll.reduce) == "function") return coll.reduce(rfn, acc);
+    return iterReduce(hp, rfn, acc, coll);
 }
 
-function lznc_map(f, r) {
-    return {
-	reduce(rfn, acc) {
-	    return reduce((acc,v) => rfn(acc, f(v)), acc, r);
-	},
-	[Symbol.iterator]() {
-	    let iter = r[Symbol.iterator]();
-            return {
-		next: () => {
-		    let rv = iter.next();
-		    return ({value: rv.done ? undefined : f(rv.value),
-			     done: rv.done});
-		}
-            }
+
+function reduce1(hp, rfn, coll) {
+    let first = true;
+    const invoker = twoArgInvoker(rfn);
+    const rv = reduce(hp, (acc,v)=>{
+	if(first) {
+	    first = false;
+	    return v;
+	} else {
+	    return invoker(acc, v);
 	}
-    };
+    }, null, coll);
+    return first ? rfn() : rv;
 }
+
 
 function hash_ordered(hash, coll) {
-    return reduce(consumerAccum, new OrderedCollHasher(hash), coll).deref();
+    return reduce(null, consumerAccum, new OrderedCollHasher(hash), coll).deref();
 }
 
 function cache_ordered(hash, coll) {
     if(coll._hash == null)
-	coll._hash = hash_ordered(hash, coll);
+	coll._hash = hash_ordered(hash, coll) | 0;
     return coll._hash;
 }
 
 function hash_unordered(hash, coll) {
-    return reduce(consumerAccum, new UnorderedCollHasher(hash), coll).deref();
+    return reduce(null, consumerAccum, new UnorderedCollHasher(hash), coll).deref();
 }
 
-function cache_hash_unordered(coll) {
+function cache_unordered(hash, coll) {
     if(coll._hash == null)
-	coll._hash = hash_unordered(coll) | 0;
+	coll._hash = hash_unordered(hash, coll) | 0;
     return coll._hash;
 }
+
+function jsIter(arg) {
+    return (arg == null) ? {next: ()=>{done: true}} : arg[Symbol.iterator]();
+}
+
+
+class Map1Impl {
+    constructor(hp, f, arg) {
+	this.hp = hp;
+	this.f = f;
+	this.arg = arg;
+	const sz = sizeIfPossible(arg);
+	if(sz != null) this.length = sz;
+    }
+    reduce(rfn, init) {
+	rfn = twoArgInvoker(rfn);
+	const f = this.f;
+	return reduce(this.hp, (acc,v)=>rfn(acc, f(v)), init, this.arg)
+    }
+    [Symbol.iterator]() {
+	let iter = jsIter(this.arg);
+	const f = this.f;
+	return {
+	    next: () => {
+		let rv = iter.next();
+		return ({done: rv.done,
+			 value: rv.done ? undefined : f(rv.value)
+			});
+	    }
+	};
+    }
+}
+
+function lznc_map_1(hp, f, arg) {
+    return new Map1Impl(hp, f, arg);
+}
+
+
+class Map2Impl {
+    constructor(hp, f, lhs, rhs) {
+	this.f = f;
+	this.hp = hp;
+	this.lhs = lhs;
+	this.rhs = rhs;
+	const lsz = sizeIfPossible(lhs);
+	const rsz = sizeIfPossible(rhs);
+	if(lsz != null && rsz != null) this.length = Math.min(lsz, rsz);
+    }
+    [Symbol.iterator]() {
+	const li = jsIter(this.lhs);
+	const ri = jsIter(this.rhs);
+	const f = this.f;
+	return {
+	    next: () => {
+		const lrv = li.next();
+		const rrv = ri.next();
+		const d = lrv.done || rrv.done;
+		return ({done: d,
+			 value: d ? undefined : f(lrv.value, rrv.value)
+			});
+	    }
+	};
+    }
+}
+
+
+function lznc_map_2(hp, f, lhs, rhs) {
+    return new Map2Impl(hp, f, lhs, rhs);
+}
+
+
+class MapNImpl {
+    constructor(hp, f, args) {
+	this.hp = hp;
+	this.f = f;
+	this.args = args;
+    }
+    [Symbol.iterator]() {
+	const f = this.f;
+	const iters = this.args.map(jsIter);
+	const l = iters.length;
+	const fnargs = Array(l);
+	return ({
+	    next: ()=>{
+		for(let idx = 0; idx < l; ++idx) {
+		    const nval = iters[idx].next();
+		    if(nval.done) return {done: true, value: undefined};
+		    fnargs[idx] = nval.value;
+		}
+		return {done: false, value: f(...fnargs)};
+	    }});
+    }
+}
+
+function lznc_map_n(hp, f, args) {
+    return new MapNImpl(hp,f,args);
+}
+
+class FilterImpl {
+    constructor(hp, pred, lhs) {
+	this.hp = hp;
+	this.pred = oneArgInvoker(pred);
+	this.lhs = lhs;
+    }
+    reduce(rfn, acc) {
+	const pred = this.pred;
+	const inv = twoArgInvoker(rfn);
+	return reduce(this.hp, (acc,v)=>pred(v) ? inv(acc,v) : acc, acc, this.lhs);
+    }
+    [Symbol.iterator]() {
+	const iter = this.lhs[Symbol.iterator]();
+	const pred = this.pred;
+	return ({next: ()=>{
+	    let rv = null;
+	    for(rv = iter.next(); rv.done == false && !pred(rv.value); rv=iter.next());
+	    const d = rv != null ? rv.done : true;
+	    return {done: d, value: d ? undefined : rv.value};
+	}});
+    }
+}
+
+function lznc_filter(hp, pred, lhs) {
+    return new FilterImpl(hp, pred,lhs);
+}
+
+class ConcatImpl {
+    constructor(hp, args) {
+	this.hp = hp;
+	this.args = args;
+    }
+    reduce(rfn, acc) {
+	rfn = twoArgInvoker(rfn);
+
+	const isReduced = this.hp.isReduced;
+	const unreduce = this.hp.unreduce;
+	const makeReduced = this.hp.makeReduced;
+	const invoker = (acc,v)=>{
+	    acc = rfn(acc,v);
+	    if(isReduced(acc))
+		return makeReduced(acc);
+	    return acc;
+	}
+	for(const coll of this.args) {
+	    if(isReduced(acc)) return unreduce(acc);
+	    if(coll != null) {
+		acc = reduce(this.hp, invoker, acc, coll);
+		if(isReduced(acc)) return unreduce(acc);
+	    }
+	}
+	return acc;
+    }
+    [Symbol.iterator]() {
+	const colliter = this.args[Symbol.iterator]();
+	let valiter = null;
+	class ConcatIter {
+	    next() {
+		if(valiter != null) {
+		    const vv = valiter.next();
+		    if(vv.done) valiter = null;
+		    else return vv;
+		}
+		while(valiter == null) {
+		    const c = colliter.next();
+		    if(c.done) return c;
+		    if(c.value != null)
+			valiter = c.value[Symbol.iterator]();
+		    return this.next();
+		}
+	    }
+	}
+	return new ConcatIter();
+    }
+}
+
+function lznc_concat(hp, args) { return new ConcatImpl(hp, args); }
 
 let LFPPRops = ["length", "0", "1", "toString"];
 
@@ -314,6 +500,11 @@ class LeafNode {
 	owner.incLeaf();
 	return new LeafNode(owner, k, null, hash, null);
     }
+    clone(nowner) {
+	const rv = new LeafNode(nowner, this.k, this.v, this.hashcode, this.nextNode);
+	rv.nextNode = rv.nextNode != null ? rv.nextNode.clone(nowner) : null;
+	return rv;
+    }
     asObject() {
 	if(this.proxy == null)
 	    this.proxy = leafProxy(this);
@@ -322,8 +513,7 @@ class LeafNode {
     toString() { return "LeafNode: " + this.k + " " + this.hashcode; }
     hashCode() {
 	let p = this;
-	return hash_ordered(this.owner.hash,
-			    {reduce(rfn,acc) { return rfn(rfn(acc,p.k), p.v); }});
+	return hash_ordered(this.owner.hash, this);
     }
     getKey() { return this.k; }
     getValue() { return this.v; }
@@ -439,6 +629,17 @@ class BitmapNode {
 	return new BitmapNode(owner, shift,
 			      leaf != null ? bitpos(shift, leaf.hashcode) : 0,
 			      Array(leaf, null, null, null));
+    }
+    clone(nowner) {
+	const rv = new BitmapNode(nowner, this.shift, this.bitmap, copyOf(this.data, this.dat.length));
+	const d = rv.data;
+	const l = d.length;
+	for(let idx = 0; idx < l; ++idx) {
+	    const e = d[idx];
+	    if(e != null)
+		d[idx]= e.clone(nowner);
+	}
+	return rv;
     }
     toString() { return "BitmapNode: " + this.shift + " " + bitCount32(this.bitmap); }
     getOrCreate(k, shift, hash) {
@@ -712,19 +913,42 @@ class MapBase {
 	retval.meta = m;
 	return retval;
     }
+    leaves() {
+	const p = this;
+	return ({length: p.count,
+		 reduce: (rfn,init)=>p.reduceLeaves(rfn, init),
+		 [Symbol.iterator]: ()=>{
+		     const i = p.iterator();
+		     return ({next: ()=>{const hn=i.hasNext();
+					 return {done: !hn, value: hn ? i.next() : undefined};}})
+		 }
+		});
+    }
+    keySet() {
+	const p = this;
+	let rv = lznc_map_1(this.hp, (e)=>e.k, this.leaves());
+	rv.contains = (k)=>p.containsKey(k);
+	return rv;
+    }
+    entrySet() {
+	const p = this;
+	const eq = this.hp.equals;
+	let rv = lznc_map_1(this.hp, (e)=>Array(e.k, e.v), this.leaves());
+	rv.contains = (kv)=> {
+	    const n = this.getNode(kv[0]);
+	    if(n) return eq(kv[1], n.v);
+	    return false;
+	};
+	return rv;
+    }
+    keys() {return this.keySet()}
+    values() {return lznc_map_1(this.hp, (e)=>e.v, this.leaves()); }
+    entries() {return this.entrySet();}
     [Symbol.iterator]() {
-        let iter = this.iterator();
-	let valary = (e) => Array(e.getKey(), e.getValue());
-        return {
-            next: () => {
-		let hn = iter.hasNext();
-		return ({value: hn ? valary(iter.next()) : undefined,
-			 done: !hn});
-	    }
-        }
+	return this.entries()[Symbol.iterator]();
     }
     reduce(rfn, acc) {
-	return this.reduceLeaves((acc, v)=>rfn(acc, Array(v.getKey(), v.getValue())), acc);
+	return this.entries().reduce(rfn, acc);
     }
 
     toString() {
@@ -770,11 +994,12 @@ class BitmapTrie extends MapBase {
 	return this.root.getNode(k, 0, hash);
     }
     reduceLeaves(rfn, acc) {
-	let isReduced = this.hp.isReduced;
-	let unreduce = this.hp.unreduce;
+	const isReduced = this.hp.isReduced;
+	const unreduce = this.hp.unreduce;
+	const invoker = twoArgInvoker(rfn);
 	if(this.nullEntry != null && !isReduced(acc))
-	    acc = rfn(acc, nullEntry);
-	return unreduce(this.root.reduceLeaves(rfn, acc));
+	    acc = invoker(acc, nullEntry);
+	return unreduce(this.root.reduceLeaves(invoker, acc));
     }
     remove(k) {
 	let c = this.count;
@@ -789,6 +1014,13 @@ class BitmapTrie extends MapBase {
     }
     shallowClone() {
 	return new BitmapTrie(this.hp, this.nullEntry, this.root, this.count);
+    }
+    clone() {
+	const rv = this.shallowClone();
+	if(rv.nullEntry != null)
+	    rv.nullEntry = rv.nullEntry.clone(rv);
+	rv.root = rv.root.clone(rv);
+	return rv;
     }
     mutAssoc(k, v) {
 	if(k == null) {
@@ -983,13 +1215,14 @@ class HashTable extends MapBase {
 	return new TableIter(this.data);
     }
     reduceLeaves(rfn, acc) {
-	let isReduced = this.hp.isReduced;
-	let data = this.data;
-	let nData = data.length;
 	if(this.count != 0) {
+	    const data = this.data;
+	    const nData = data.length;
+	    const isReduced = this.hp.isReduced;
+	    const invoker = twoArgInvoker(rfn);
 	    for(let idx = 0; idx < nData && !isReduced(acc); ++idx) {
 		for(let lf = data[idx]; lf != null && !isReduced(acc); lf = lf.nextNode) {
-		    acc = rfn(acc, lf);
+		    acc = invoker(acc, lf);
 		}
 	    }
 	}
@@ -1026,32 +1259,6 @@ function groupByReduce(mapFn, keyFn, initFn, rfn, finFn, coll) {
 }
 
 
-function lznc_map_1(f, arg) {
-    class Map1Impl {
-	reduce (rfn, init) {
-	    rfn = twoArgInvoker(rfn);
-	    return reduce((acc,v)=>rfn(acc, f(v)), init, arg)
-	}
-	[Symbol.iterator]() {
-	    let iter = arg[Symbol.iterator]();
-	    return {
-		next: () => {
-		    let rv = iter.next();
-		    return ({done: rv.done,
-			     value: rv.done ? undefined : f(rv.value)
-			    });
-		}
-	    };
-	}
-    }
-    const rv = new Map1Impl();
-    let s = sizeIfPossible(arg);
-    if (s != null)
-	rv.length = s;
-    return rv;
-}
-
-
 module.exports.copyOf = copyOf;
 module.exports.mask = mask;
 module.exports.bitpos = bitpos;
@@ -1059,6 +1266,7 @@ module.exports.bitIndex = bitIndex;
 module.exports.nextPow2 = nextPow2;
 module.exports.insert = insert;
 module.exports.defaultHash = defaultHash;
+module.exports.sizeIfPossible = sizeIfPossible;
 module.exports.makeTrie = makeBitmapTrie;
 module.exports.makeHashTable = makeHashTable;
 module.exports.mapProxy = mapProxy;
@@ -1069,13 +1277,18 @@ module.exports.m3_fmix = m3_fmix;
 module.exports.hash_ordered = hash_ordered;
 module.exports.cache_ordered = cache_ordered;
 module.exports.hash_unordered = hash_unordered;
+module.exports.cache_unordered = cache_unordered;
 module.exports.mix_collection_hash = mix_collection_hash;
 module.exports.objHashCode = objHashCode
+module.exports.reduce1 = reduce1;
 module.exports.reduce = reduce;
-module.exports.array_reduce = array_reduce;
 module.exports.defaultProvider = defaultProvider;
 module.exports.groupByReduce = groupByReduce;
 module.exports.oneArgInvoker = oneArgInvoker;
 module.exports.twoArgInvoker = twoArgInvoker;
 module.exports.threeArgInvoker = threeArgInvoker;
 module.exports.lznc_map_1 = lznc_map_1;
+module.exports.lznc_map_2 = lznc_map_2;
+module.exports.lznc_map_n = lznc_map_n;
+module.exports.lznc_concat = lznc_concat;
+module.exports.lznc_filter = lznc_filter;

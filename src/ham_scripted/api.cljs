@@ -1,5 +1,5 @@
 (ns ham-scripted.api
-  (:require [kixi.stats.core :as k])
+  (:require [ham-scripted.lazy-noncaching :refer [coll-reducer]:as lznc])
   (:refer-clojure :exclude [frequencies object-array range]))
 
 
@@ -36,7 +36,7 @@
 (def ^:private rot-left (aget bm-module "rotLeft"))
 (def indexedAccum (aget cv-module "indexedAccum"))
 (def ^:private cv-cons (aget cv-module "makeChunkedVec"))
-(def ^:private sizeIfPossible (aget cv-module "sizeIfPossible"))
+(def ^:private sizeIfPossible (aget bm-module "sizeIfPossible"))
 (def ^:private idxAcc (aget cv-module "indexedAccum"))
 
 
@@ -47,21 +47,9 @@
   ([start end step] (.range cv-module start end step default-provider)))
 
 
-(defn coll-reducer
-  [coll]
-  (cond
-    (nil? coll) coll
-    (array? coll) coll
-    (nil? (.-reduce coll))
-    (if-let [l (sizeIfPossible coll)]
-      (js-obj "length" l "reduce" #(-reduce coll %1 %2))
-      (js-obj "reduce" #(-reduce coll %1 %2)))
-    :else coll))
-
-
 (defn coll-reduce
-  [coll rfn init]
-  (.reduce bm-module rfn init (coll-reducer coll)))
+  ([coll rfn] (.reduce1 bm-module default-provider rfn (coll-reducer coll)))
+  ([coll rfn init] (.reduce bm-module default-provider rfn init (coll-reducer coll))))
 
 
 (defn coll-transduce
@@ -97,6 +85,12 @@
   ([xform data] (reduce-put! xform (ht-cons default-provider) data)))
 
 
+(defn js-map
+  ([] (js/Map.))
+  ([data] (coll-reduce data (fn [m v] (.set m (nth v 0) (nth v 1))) (js/Map.)))
+  ([xform data] (coll-transduce data xform (fn [m v] (.set m (nth v 0) (nth v 1))) (js/Map.))))
+
+
 
 (defn freq-rf
   ([] (freq-rf nil))
@@ -127,6 +121,7 @@
    (cond
      (nil? data)
      (js/Array)
+     (number? data) (js/Array data)
      (.-toArray ^JS data)
      (.toArray ^JS data)
      :else
@@ -148,20 +143,19 @@
 (def ^:private jm-type (type (java-hashmap)))
 (def ^:private ml-type (type (mut-list)))
 
-
 ;; These break hot-reload - probably because the typenames are the same
 
-;; (extend-type mm-type
-;;   IReduce
-;;   (-reduce [this rfn init] (.reduce this rfn init)))
+(extend-type mm-type
+  IReduce
+  (-reduce [this rfn init] (.reduce this rfn init)))
 
-;; (extend-type jm-type
-;;   IReduce
-;;   (-reduce [this rfn init] (.reduce this rfn init)))
+(extend-type jm-type
+  IReduce
+  (-reduce [this rfn init] (.reduce this rfn init)))
 
-;; (extend-type ml-type
-;;   IReduce
-;;   (-reduce [this rfn init] (.reduce this rfn init)))
+(extend-type ml-type
+  IReduce
+  (-reduce [this rfn init] (.reduce this rfn init)))
 
 
 (defn group-by-reducer
@@ -173,7 +167,16 @@
       (coll-reducer coll))))
 
 
-(defn group-by-reducer-cljs
+(defn group-by
+  [key-fn coll]
+  (group-by-reducer key-fn (fn ([] (mut-list))
+                             ([acc v] (.add ^JS acc v) acc)
+                             ([acc] acc))
+                    coll))
+
+
+(defn ^:no-doc group-by-reducer-cljs
+  "Useful for timing information"
   [key-fn reducer coll]
   (->> (group-by key-fn coll)
        (into {} (map (fn [[k v]] [k (-> (reduce reducer (reducer) v)
