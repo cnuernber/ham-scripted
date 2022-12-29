@@ -510,10 +510,12 @@ class LeafNode {
 	    this.proxy = leafProxy(this);
 	return this.proxy;
     }
-    toString() { return "LeafNode: " + this.k + " " + this.hashcode; }
+    toString() { return "[" + this.k + " " + this.v +"]"; }
     hashCode() {
-	let p = this;
-	return hash_ordered(this.owner.hash, this);
+	if(this.owner.cache_hash)
+	    return cache_ordered(this.owner.hash, this);
+	else
+	    return hash_ordered(this.owner.hash, this);
     }
     getKey() { return this.k; }
     getValue() { return this.v; }
@@ -561,9 +563,9 @@ class LeafNode {
 	return new LeafNode(nowner, this.k, this.v, this.hashcode, this.nextNode)
     }
     assoc(nowner, shift, k, hash, v) {
-	retval = this.setOwner(nowner);
+	let retval = this.setOwner(nowner);
 	if(nowner.equals(k, this.k)) {
-	    this.v = v;
+	    retval.v = v;
 	} else {
 	    if(retval.nextNode != null) {
 		retval.nextNode = retval.nextNode.assoc(nowner, shift, k, hash, v);
@@ -614,6 +616,28 @@ class LeafNode {
 	for(let lf = this; lf != null && !isReduced(acc); lf = lf.nextNode)
 	    acc = rfn(acc, lf);
 	return acc;
+    }
+    [Symbol.iterator]() {
+	let idx = 0;
+	const p = this;
+	return ({
+	    next: ()=>{
+		let done = idx >= 2;
+		let rv = done ? {done: true} :
+		    {done: false,
+		     value: idx == 0 ? p.k : p.v};
+		idx = done ? idx : idx + 1;
+		return rv;
+	    }
+	});
+    }
+    reduce(rfn, acc) {
+	const isReduced = this.owner.isReduced;
+	rfn = twoArgInvoker(rfn);
+	acc = rfn(acc, this.k);
+	if(!isReduced(acc))
+	    acc = rfn(acc, this.v);
+	return this.owner.unreduce(acc);
     }
 }
 
@@ -719,9 +743,9 @@ class BitmapNode {
 	let index = bitIndex(bm, bpos);
 	if((bm & bpos) != 0) {
 	    let data = forceCopy ? copyOf(this.data, this.data.length) : this.data;
-	    let curEntry = this.data[index];
-	    if (curEntry instanceof BitmapNode) {
-		data[index] = curEntry.assoc(nowner, incShift(shift), k, hash, v);
+	    let entry = this.data[index];
+	    if (entry instanceof BitmapNode) {
+		data[index] = entry.assoc(nowner, incShift(shift), k, hash, v);
 	    } else {
 		if (hash == entry.hashcode) {
 		    data[index] = entry.assoc(nowner, shift, k, hash, v);
@@ -944,11 +968,12 @@ class MapBase {
     keys() {return this.keySet()}
     values() {return lznc_map_1(this.hp, (e)=>e.v, this.leaves()); }
     entries() {return this.entrySet();}
+    //Iteration matches a javascript map
     [Symbol.iterator]() {
 	return this.entries()[Symbol.iterator]();
     }
     reduce(rfn, acc) {
-	return this.entries().reduce(rfn, acc);
+	return this.leaves().reduce(rfn, acc);
     }
 
     toString() {
@@ -1292,3 +1317,6 @@ module.exports.lznc_map_2 = lznc_map_2;
 module.exports.lznc_map_n = lznc_map_n;
 module.exports.lznc_concat = lznc_concat;
 module.exports.lznc_filter = lznc_filter;
+module.exports.BitmapTrie = BitmapTrie;
+module.exports.LeafNode = LeafNode;
+module.exports.HashTable = HashTable;

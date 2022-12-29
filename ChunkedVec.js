@@ -241,3 +241,5 @@ module.exports.range = range;
 module.exports.sum = () => new Sum();
 module.exports.mmax_key = (fn) => new MMaxKey(fn);
 module.exports.mmin_key = (fn) => new MMinKey(fn);
+module.exports.ChunkedVector = ChunkedVector;
+module.exports.Range = Range;

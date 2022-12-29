@@ -1,6 +1,9 @@
-(ns ham-scripted.api
-  (:require [ham-scripted.lazy-noncaching :refer [coll-reducer]:as lznc])
-  (:refer-clojure :exclude [frequencies object-array range]))
+(ns ham-fisted.api
+  (:require [ham-fisted.lazy-noncaching :refer [coll-reducer]:as lznc])
+  (:refer-clojure :exclude [frequencies object-array range group-by]))
+
+
+(declare make-immut)
 
 
 (defn- reload-module
@@ -91,6 +94,188 @@
   ([xform data] (coll-transduce data xform (fn [m v] (.set m (nth v 0) (nth v 1))) (js/Map.))))
 
 
+(def ^:private bm-type (.-BitmapTrie bm-module))
+(def ^:private hm-type (.-HashTable bm-module))
+(def ^:private cv-type (.-ChunkedVector cv-module))
+(def ^:private empty-map (java-hashmap))
+
+
+(deftype ImmutMap [^JS m]
+  Object
+  (toString [this] (.toString m))
+  (size [this] (.size m))
+  (reduce [this rfn init] (.reduce m rfn init))
+  (keys [coll] (.keys m))
+  (entries [coll] (.entries m))
+  (values [coll] (.values m))
+  (has [coll k] (.has m k))
+  (get [coll k nf] (.getOrDefault m k nf))
+  (forEach [coll f] (.forEach m f))
+  ICounted
+  (-count [this] (.size m))
+   ICollection
+   (-conj [coll o]
+     (if (vector? o)
+       (-assoc coll (-nth o 0) (-nth o 1))
+       (-> (reduce (fn [^JS m o]
+                     (if (vector? o)
+                       (.put m (-nth o 0) (-nth o 1))
+                       (throw (js/Error. "Invalid map conj data")))
+                     m)
+                   (.shallowClone m)
+                   o)
+           (make-immut))))
+  IEmptyableCollection
+  (-empty [coll] (make-immut empty-map))
+  IEditableCollection
+  (-as-transient [coll] (.shallowClone m))
+  IEquiv
+  (-equiv [this other] (equiv-map this other))
+  IHash
+  (-hash [this] (.cache_unordered bm-module hash this))
+  ILookup
+  (-lookup [o k] (.get m k))
+  (-lookup [o k nf] (.getOrDefault m k nf))
+  IAssociative
+  (-contains-key? [coll k] (.containsKey m k))
+  (-assoc [coll k v] (let [^JS m (.shallowClone m)]
+                       (make-immut (.mutAssoc m k v))))
+  IFind
+  (-find [coll k] (.getNode m k))
+  IMap
+  (-dissoc [coll k]
+   (let [^JS m (.shallowClone m)]
+     (make-immut (.mutDissoc m k))))
+  IFn
+  (-invoke [this a] (.get m a))
+  (-invoke [this a d] (.getOrDefault m a d))
+  IReduce
+  (-reduce [this rfn] (.reduce bm-module rfn m))
+  (-reduce [this rfn init] (.reduce m rfn init))
+  ISeqable
+  (-seq [this] (seq m))
+  IMeta
+  (-meta [this] (.meta m))
+  IWithMeta
+  (-with-meta [this k] (make-immut (.withMeta m k)))
+  IKVReduce
+  (-kv-reduce [coll f init]
+    (.reduceLeaves m #(f %1 (.-k ^JS %2) (.-v ^JS %2)) init))
+  IPrintWithWriter
+  (-pr-writer [this writer opts]
+    (-write writer (.toString m))))
+
+
+(defn- make-immut
+  [^JS m]
+  (set! (.-cache_hash m) true)
+  (ImmutMap. m))
+
+
+(defn extend-mut-map!
+  [map-type]
+  (extend-type map-type
+    ITransientCollection
+    (-conj! [this val]
+      (.put this (nth val 0) (nth val 1))
+      this)
+    (-persistent! [this] (make-immut this))
+    ITransientAssociative
+    (-assoc! [tcoll key val]
+      (.put tcoll key val) tcoll)
+    IHash
+    (-hash [this] (.hashCode this))
+    IEquiv
+    (-equiv [this other] (equiv-map this other))
+    ICounted
+    (-count [this] (.size this))
+    IMeta
+    (-meta [this] (.meta this))
+    IWithMeta
+    (-with-meta [this k] (.withMeta this k))
+    ICloneable
+    (-clone [this] (.clone this))
+    ILookup
+    (-lookup
+      ([m k] (.get ^JS m k))
+      ([m k nf] (.getOrDefault ^JS m k nf)))
+    IFind
+    (-find [m k] (.getNode ^JS m k))
+    IMap
+    (-dissoc [coll k] (throw (js/Error. "Unimplemented")))
+    ISeqable
+    (-seq [this] (es6-iterator-seq (lznc/js-iterator (.leaves this))))
+    IFn
+    (-invoke
+      ([this a] (.get this a))
+      ([this a d] (.getOrDefault this a d)))
+    IReduce
+    (-reduce
+      ([this rfn] (reduce rfn this))
+      ([this rfn init] (.reduce this rfn init)))
+    IKVReduce
+    (-kv-reduce [coll f init]
+      (.reduceLeaves coll #(f %1 (.-k ^JS %2) (.-v ^JS %2)) init))
+    IPrintWithWriter
+    (-pr-writer [this writer opts]
+      (-write writer (.toString this)))))
+
+
+(def ^:private leaf-node-type (.-LeafNode bm-module))
+
+
+(extend-type leaf-node-type
+  ISequential
+  ICounted
+  (-count [this] 2)
+  IHash
+  (-hash [this] (.hashCode this))
+  IEquiv
+  (-equiv [this o]
+    (if (== 2 (count o))
+      (and (= (.-k this) (-nth o 0))
+           (= (.-v this) (-nth o 1)))))
+  IIndexed
+  (-nth
+    ([this idx] (case idx
+                     0 (.-k this)
+                     1 (.-v this)))
+    ([this idx d] (if (and (number? idx) (>= idx 0) (< idx 2))
+                    (case idx
+                     0 (.-k this)
+                     1 (.-v this))
+                    d)))
+  IReduce
+  (-reduce
+    ([this rfn] (rfn (.-k this) (.-v this)))
+    ([this rfn acc] (.reduce this rfn acc)))
+  IFn
+  (-invoke
+    ([this a] (-nth this a))
+    ([this a d] (-nth this a d)))
+  IMapEntry
+  (-key [this] (.-k this))
+  (-val [this] (.-v this))
+  IPrintWithWriter
+  (-pr-writer [this writer opts]
+    (-write writer (.toString this))))
+
+
+(extend-mut-map! bm-type)
+(extend-mut-map! hm-type)
+
+
+(defn immut-map
+  ([] (make-immut (java-hashmap)))
+  ([data] (make-immut (java-hashmap data))))
+
+
+(extend-type cv-type
+  ICounted
+  (-count [this] (.size this))
+  IReduce
+  (-reduce [this rfn init] (.reduce this rfn init)))
+
 
 (defn freq-rf
   ([] (freq-rf nil))
@@ -137,25 +322,6 @@
   ([] (cv-cons default-provider))
   ([data] (doto (cv-cons default-provider)
             (.addAll data))))
-
-
-(def ^:private mm-type (type (mut-map)))
-(def ^:private jm-type (type (java-hashmap)))
-(def ^:private ml-type (type (mut-list)))
-
-;; These break hot-reload - probably because the typenames are the same
-
-(extend-type mm-type
-  IReduce
-  (-reduce [this rfn init] (.reduce this rfn init)))
-
-(extend-type jm-type
-  IReduce
-  (-reduce [this rfn init] (.reduce this rfn init)))
-
-(extend-type ml-type
-  IReduce
-  (-reduce [this rfn init] (.reduce this rfn init)))
 
 
 (defn group-by-reducer

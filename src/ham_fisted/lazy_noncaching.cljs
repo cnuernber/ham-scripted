@@ -1,4 +1,4 @@
-(ns ham-scripted.lazy-noncaching
+(ns ham-fisted.lazy-noncaching
   (:refer-clojure :exclude [map counted? count filter concat remove]))
 
 
@@ -15,7 +15,7 @@
   [obj]
   (if-let [iter-fn (aget obj (.-iterator js/Symbol))]
     (.call iter-fn obj)
-    (let [i (seq-iter (seq obj))]
+    (let [i (iter obj)]
       (js-obj "next" (fn []
                        (if (.hasNext i)
                          (js-obj "done" false "value" (.next i))
