@@ -183,6 +183,10 @@ function consumerAccum(acc, v) {
     acc.accept(v); return acc;
 }
 
+function noArgInvoker(rfn) {
+    return rfn.cljs$core$IFn$_invoke$arity$0 ? rfn.cljs$core$IFn$_invoke$arity$0 : rfn;
+}
+
 function oneArgInvoker(rfn) {
     return rfn.cljs$core$IFn$_invoke$arity$1 ? rfn.cljs$core$IFn$_invoke$arity$1 : rfn;
 }
@@ -1113,23 +1117,49 @@ class HashTable extends MapBase {
     }
     checkResize(node) {
 	if(this.count >= this.threshold) {
-	    let oldData = this.data;
-	    let newcap = this.capacity * 2
+	    const oldData = this.data;
+	    const newcap = this.capacity * 2
 	    this.capacity = newcap;
 	    this.threshold = Math.floor(this.capacity * this.loadFactor) | 0;
 	    this.data = Array(newcap);
 	    this.mask = (newcap - 1) | 0;
-	    let newData = this.data;
-	    let dlen = oldData.length;
-	    let mask = newcap - 1;
-	    for(let idx = 0; idx < dlen; ++idx) {
-		for(let lf = oldData[idx]; lf != null; lf = lf.nextNode) {
-		    let bucket = lf.hashcode & mask;
-		    let entry = newData[bucket];
-		    if(entry == null)
-			newData[bucket] = lf;
-		    else {
-			entry.append(lf);
+	    const newData = this.data;
+	    const oldCap = oldData.length;
+	    const mask = newcap - 1;
+	    for(let idx = 0; idx < oldCap; ++idx) {
+		let lf = oldData[idx];
+		if(lf != null) {
+		    oldData[idx] = null;
+		    //Common case
+		    if(lf.nextNode == null) {
+			newData[lf.hashcode & mask] = lf;
+		    } else {
+			//Because capacity only grows by powers of 2, we can split
+			//the nodes up into high bit and low bit linked lists as we
+			//added one bit to the capacity.  We create these lists here
+			//and simply set them to the correct location once.  This
+			//avoids reading from the new data array.
+			let loHead = null, loTail = null, hiHead = null, hiTail = null;
+			do {
+			    if((lf.hashcode & oldCap) == 0) {
+				if(loTail == null) loHead = lf;
+				else loTail.nextNode = lf;
+				loTail = lf;
+			    } else {
+				if(hiTail == null) hiHead = lf;
+				else hiTail.nextNode = lf;
+				hiTail = lf;
+			    }
+			    lf = lf.nextNode;
+			} while(lf != null);
+			if(loHead != null) {
+			    loTail.nextNode = null;
+			    newData[idx] = loHead;
+			}
+			if(hiHead != null) {
+			    hiTail.nextNode = null;
+			    newData[idx+oldCap] = hiHead;
+			}
 		    }
 		}
 	    }
@@ -1166,6 +1196,31 @@ class HashTable extends MapBase {
 	if(entry != null)
 	    this.data[bucket] = entry.remove(k, hashcode, true);
 	return sz != this.size();
+    }
+    //Override compute to provide higher performance
+    compute(k, bifn) {
+	let n = this.getOrCreate(k);
+	let hashcode = this.hash(k);
+	let bucket = hashcode & this.mask;
+	let ee = null, e = null;
+	for(e = this.data[bucket]; e != null && !((e.k == k) || this.equals(e.k, k)); e = e.nextNode)
+	    ee = e;
+	let newv = bifn(k, e != null ? e.v : null);
+	if(e != null) {
+	    if(newv != null)
+		e.v = newv;
+	    else
+		remove(k);
+	} else {
+	    let lf = new LeafNode(this, k, newv, hashcode, null);
+	    if(ee != null)
+		ee.nextNode = lf;
+	    else
+		this.data[bucket] = ee;
+	    this.incLeaf();
+	    this.checkResize(null);
+	}
+	return newv;
     }
 
     shallowClone() {
@@ -1268,17 +1323,17 @@ function identityGroupByRfn(initFn, reducer) {
     return (m,v)=>{m.compute(v, rfn); return m;}
 }
 
-function keyFnGroupByRfn(keyFn, initFn, reducer) {
+function keyFnGroupByRfn(hp, keyFn, initFn, reducer) {
     return (m,v)=>{m.compute(keyFn(v), (k,vv)=>reducer(vv == null ? initFn() : vv, v));
 		   return m;}
 }
 
 
-function groupByReduce(mapFn, keyFn, initFn, rfn, finFn, coll) {
+function groupByReduce(hp, mapFn, keyFn, initFn, rfn, finFn, coll) {
     const invoker = twoArgInvoker(rfn);
-    const rf = keyFn == null ? identityGroupByRfn(oneArgInvoker(initFn),invoker)
-	  : keyFnGroupByRfn(oneArgInvoker(keyFn), oneArgInvoker(initFn), invoker);
-    const rv = reduce(rf, mapFn(), coll);
+    const rf = keyFn == null ? identityGroupByRfn(noArgInvoker(initFn),invoker)
+	  : keyFnGroupByRfn(hp, oneArgInvoker(keyFn), noArgInvoker(initFn), invoker);
+    const rv = reduce(hp, rf, mapFn(), coll);
     const ff = finFn == null ? null : oneArgInvoker(finFn);
     return ff == null ? rv : rv.reduceLeaves((acc,n)=>{n.v = ff(n.v); return acc}, rv);
 }

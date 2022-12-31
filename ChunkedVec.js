@@ -155,9 +155,12 @@ class Range {
 	const l = this.length;
 	const start = this.start;
 	const step = this.step;
-	for(let idx = 0; idx < l && !isReduced(acc); ++idx)
+	for(let idx = 0; idx < l; ++idx) {
 	    acc = invoker(acc, start+(step*idx));
-	return unreduce(acc);
+	    if(isReduced(acc))
+		return unreduce(acc);
+	}
+	return acc;
     }
     [Symbol.iterator]() {
 	const l = this.length;

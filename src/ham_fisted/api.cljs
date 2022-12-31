@@ -41,7 +41,12 @@
 (def ^:private cv-cons (aget cv-module "makeChunkedVec"))
 (def ^:private sizeIfPossible (aget bm-module "sizeIfPossible"))
 (def ^:private idxAcc (aget cv-module "indexedAccum"))
+(def ^:private RangeType (.-Range cv-module))
 
+(extend-type RangeType
+  IReduce
+  (-reduce ([r rfn] (.reduce bm-module default-provider rfn r))
+    ([r rfn acc] (.reduce r rfn acc))))
 
 (defn range
   ([] (cljs.core/range))
@@ -328,7 +333,7 @@
   ([reducer coll] (group-by-reducer nil reducer nil coll))
   ([key-fn reducer coll] (group-by-reducer key-fn reducer nil coll))
   ([key-fn reducer options coll]
-   (. bm-module groupByReduce java-hashmap key-fn reducer reducer
+   (. bm-module groupByReduce default-provider java-hashmap key-fn reducer reducer
       (if (get options :skip-finalize?) nil reducer)
       (coll-reducer coll))))
 
@@ -344,7 +349,7 @@
 (defn ^:no-doc group-by-reducer-cljs
   "Useful for timing information"
   [key-fn reducer coll]
-  (->> (group-by key-fn coll)
+  (->> (cljs.core/group-by key-fn coll)
        (into {} (map (fn [[k v]] [k (-> (reduce reducer (reducer) v)
                                         (reducer))])))))
 
