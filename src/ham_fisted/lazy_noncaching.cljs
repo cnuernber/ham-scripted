@@ -1,14 +1,6 @@
 (ns ham-fisted.lazy-noncaching
+  (:require [ham-fisted.BitmapTrie :as bm])
   (:refer-clojure :exclude [map counted? count filter concat remove]))
-
-
-(defn- reload-module
-  [fpath]
-  (js-delete (.-cache js/require) (.resolve js/require fpath))
-  (js/require fpath))
-
-
-(def bm-module (reload-module "./BitmapTrie.js"))
 
 
 (defn js-iterator
@@ -59,19 +51,19 @@
 
 (defn map
   ([f] (cljs.core/map f))
-  ([f arg] (if (nil? arg) '() (.lznc_map_1 bm-module reducedProvider f (coll-reducer arg))))
-  ([f lhs rhs] (.lznc_map_2 bm-module reducedProvider f (coll-reducer lhs) (coll-reducer rhs)))
+  ([f arg] (if (nil? arg) '() (bm/lznc_map_1 reducedProvider f (coll-reducer arg))))
+  ([f lhs rhs] (bm/lznc_map_2 reducedProvider f (coll-reducer lhs) (coll-reducer rhs)))
   ([f lhs rhs & args]
    (let [arg (js/Array)]
      (.push arg lhs)
      (.push arg rhs)
      (reduce (fn [acc v] (.push acc v) acc) arg args)
-     (.lznc_map_n bm-module reducedProvider f arg))))
+     (bm/lznc_map_n reducedProvider f arg))))
 
 
 (defn filter
   ([f] (cljs.core/filter f))
-  ([f arg] (if (nil? arg) '() (.lznc_filter bm-module reducedProvider f arg))))
+  ([f arg] (if (nil? arg) '() (bm/lznc_filter reducedProvider f arg))))
 
 
 (defn remove
@@ -84,4 +76,38 @@
   ([& args]
    (if-not (seq (rest args))
      (first args)
-     (.lznc_concat bm-module reducedProvider (map coll-reducer args)))))
+     (bm/lznc_concat reducedProvider (map coll-reducer args)))))
+
+
+(defn- iter-seq->string
+  [opts iter]
+  (str
+   (reduce (fn [acc v]
+             (cond
+               (> (.-length acc) 1024) (reduced (str acc " ..."))
+               (> (.-length acc) 1) (str acc " " v)
+               :else
+               (str acc v)))
+           "("
+           iter)
+   ")"))
+
+
+(defn extend-seq-type
+  [t]
+  (extend-type t
+    IPrintWithWriter
+    (-pr-writer [this writer opts]
+      (-write writer (iter-seq->string opts this)))
+    IReduce
+    (-reduce
+      ([this rfn] (bm/reduce1 (.-hp this) rfn this))
+      ([this rfn init] (.reduce this rfn init)))))
+
+
+
+(extend-seq-type bm/Map1Impl)
+(extend-seq-type bm/Map2Impl)
+(extend-seq-type bm/MapNImpl)
+(extend-seq-type bm/FilterImpl)
+(extend-seq-type bm/ConcatImpl)

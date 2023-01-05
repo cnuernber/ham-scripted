@@ -1,4 +1,7 @@
-let bm = require("./BitmapTrie.js");
+goog.module("ham_fisted.ChunkedVec");
+goog.module.declareLegacyNamespace();
+
+let bm = goog.require("ham_fisted.BitmapTrie");
 
 
 function indexedAccum(rfn, inN) {
@@ -236,13 +239,13 @@ class MMinKey {
     deref() { return this.v; }
 }
 
-module.exports.indexedAccum = indexedAccum;
-module.exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
-module.exports.addVal = (a,b) => a + b;
-module.exports.decVal = (a,b) => a - b;
-module.exports.range = range;
-module.exports.sum = () => new Sum();
-module.exports.mmax_key = (fn) => new MMaxKey(fn);
-module.exports.mmin_key = (fn) => new MMinKey(fn);
-module.exports.ChunkedVector = ChunkedVector;
-module.exports.Range = Range;
+exports.indexedAccum = indexedAccum;
+exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
+exports.addVal = (a,b) => a + b;
+exports.decVal = (a,b) => a - b;
+exports.range = range;
+exports.sum = () => new Sum();
+exports.mmax_key = (fn) => new MMaxKey(fn);
+exports.mmin_key = (fn) => new MMinKey(fn);
+exports.ChunkedVector = ChunkedVector;
+exports.Range = Range;

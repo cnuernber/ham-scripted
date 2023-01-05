@@ -31,7 +31,7 @@ You can emulate both functional assoc and transient assoc! by using `shallowClon
   (dotimes [idx 10] (time (frequencies (map #(rem % 373373)) {:map-fn mut-map} (range 1000000))))
   ;;averages about 420ms
   (dotimes [idx 10] (time (frequencies (map #(rem % 373373)) {:map-fn java-hashmap} (range 1000000))))
-  ;;averages about 130ms
+  ;;averages about 80ms
 ```
 
 #### group-by-reducer

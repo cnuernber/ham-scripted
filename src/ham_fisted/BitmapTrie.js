@@ -1,3 +1,7 @@
+goog.module("ham_fisted.BitmapTrie");
+goog.module.declareLegacyNamespace();
+
+
 function cyrb53(str, seed = 0) {
   let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
   for (let i = 0, ch; i < str.length; i++) {
@@ -65,7 +69,7 @@ function bitIndex(bitmap, bit) {
 }
 
 function nextPow2(n) {
-    rval = 1 << 31 - Math.clz32(n);
+    let rval = 1 << 31 - Math.clz32(n);
     return rval == n ? rval : rval << 1;
 }
 
@@ -83,11 +87,11 @@ function copyOf(srcData, len) {
 
 
 function insert(srcData, obj, insertIdx, newLen, forceCopy) {
-    srcLen = srcData.length;
-    dstLen = nextPow2(newLen);
-    copy = forceCopy || dstLen > srcLen;
-    dstData = copy ? copyOf(srcData, dstLen) : srcData;
-    for(ridx = newLen-1; ridx > insertIdx; --ridx)
+    let srcLen = srcData.length;
+    let dstLen = nextPow2(newLen);
+    let copy = forceCopy || dstLen > srcLen;
+    let dstData = copy ? copyOf(srcData, dstLen) : srcData;
+    for(let ridx = newLen-1; ridx > insertIdx; --ridx)
       dstData[ridx] = srcData[ridx - 1];
     dstData[insertIdx] = obj;
     return dstData;
@@ -321,6 +325,9 @@ class Map2Impl {
 	const rsz = sizeIfPossible(rhs);
 	if(lsz != null && rsz != null) this.length = Math.min(lsz, rsz);
     }
+    reduce(rfn, init) {
+	return iterReduce(this.hp, rfn, init, this);
+    }
     [Symbol.iterator]() {
 	const li = jsIter(this.lhs);
 	const ri = jsIter(this.rhs);
@@ -349,6 +356,9 @@ class MapNImpl {
 	this.hp = hp;
 	this.f = f;
 	this.args = args;
+    }
+    reduce(rfn, init) {
+	return iterReduce(this.hp, rfn, init, this);
     }
     [Symbol.iterator]() {
 	const f = this.f;
@@ -1199,7 +1209,6 @@ class HashTable extends MapBase {
     }
     //Override compute to provide higher performance
     compute(k, bifn) {
-	let n = this.getOrCreate(k);
 	let hashcode = this.hash(k);
 	let bucket = hashcode & this.mask;
 	let ee = null, e = null;
@@ -1216,7 +1225,7 @@ class HashTable extends MapBase {
 	    if(ee != null)
 		ee.nextNode = lf;
 	    else
-		this.data[bucket] = ee;
+		this.data[bucket] = lf;
 	    this.incLeaf();
 	    this.checkResize(null);
 	}
@@ -1339,39 +1348,44 @@ function groupByReduce(hp, mapFn, keyFn, initFn, rfn, finFn, coll) {
 }
 
 
-module.exports.copyOf = copyOf;
-module.exports.mask = mask;
-module.exports.bitpos = bitpos;
-module.exports.bitIndex = bitIndex;
-module.exports.nextPow2 = nextPow2;
-module.exports.insert = insert;
-module.exports.defaultHash = defaultHash;
-module.exports.sizeIfPossible = sizeIfPossible;
-module.exports.makeTrie = makeBitmapTrie;
-module.exports.makeHashTable = makeHashTable;
-module.exports.mapProxy = mapProxy;
-module.exports.rotLeft = rotLeft;
-module.exports.m3_mix_K1 = m3_mix_K1;
-module.exports.m3_mix_H1 = m3_mix_H1;
-module.exports.m3_fmix = m3_fmix;
-module.exports.hash_ordered = hash_ordered;
-module.exports.cache_ordered = cache_ordered;
-module.exports.hash_unordered = hash_unordered;
-module.exports.cache_unordered = cache_unordered;
-module.exports.mix_collection_hash = mix_collection_hash;
-module.exports.objHashCode = objHashCode
-module.exports.reduce1 = reduce1;
-module.exports.reduce = reduce;
-module.exports.defaultProvider = defaultProvider;
-module.exports.groupByReduce = groupByReduce;
-module.exports.oneArgInvoker = oneArgInvoker;
-module.exports.twoArgInvoker = twoArgInvoker;
-module.exports.threeArgInvoker = threeArgInvoker;
-module.exports.lznc_map_1 = lznc_map_1;
-module.exports.lznc_map_2 = lznc_map_2;
-module.exports.lznc_map_n = lznc_map_n;
-module.exports.lznc_concat = lznc_concat;
-module.exports.lznc_filter = lznc_filter;
-module.exports.BitmapTrie = BitmapTrie;
-module.exports.LeafNode = LeafNode;
-module.exports.HashTable = HashTable;
+exports.copyOf = copyOf;
+exports.mask = mask;
+exports.bitpos = bitpos;
+exports.bitIndex = bitIndex;
+exports.nextPow2 = nextPow2;
+exports.insert = insert;
+exports.defaultHash = defaultHash;
+exports.sizeIfPossible = sizeIfPossible;
+exports.makeTrie = makeBitmapTrie;
+exports.makeHashTable = makeHashTable;
+exports.mapProxy = mapProxy;
+exports.rotLeft = rotLeft;
+exports.m3_mix_K1 = m3_mix_K1;
+exports.m3_mix_H1 = m3_mix_H1;
+exports.m3_fmix = m3_fmix;
+exports.hash_ordered = hash_ordered;
+exports.cache_ordered = cache_ordered;
+exports.hash_unordered = hash_unordered;
+exports.cache_unordered = cache_unordered;
+exports.mix_collection_hash = mix_collection_hash;
+exports.objHashCode = objHashCode
+exports.reduce1 = reduce1;
+exports.reduce = reduce;
+exports.defaultProvider = defaultProvider;
+exports.groupByReduce = groupByReduce;
+exports.oneArgInvoker = oneArgInvoker;
+exports.twoArgInvoker = twoArgInvoker;
+exports.threeArgInvoker = threeArgInvoker;
+exports.lznc_map_1 = lznc_map_1;
+exports.lznc_map_2 = lznc_map_2;
+exports.lznc_map_n = lznc_map_n;
+exports.lznc_concat = lznc_concat;
+exports.lznc_filter = lznc_filter;
+exports.BitmapTrie = BitmapTrie;
+exports.LeafNode = LeafNode;
+exports.HashTable = HashTable;
+exports.Map1Impl = Map1Impl;
+exports.Map2Impl = Map2Impl;
+exports.MapNImpl = MapNImpl;
+exports.FilterImpl = FilterImpl;
+exports.ConcatImpl = ConcatImpl;

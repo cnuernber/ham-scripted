@@ -1,19 +1,21 @@
 (ns ham-fisted.api
-  (:require [ham-fisted.lazy-noncaching :refer [coll-reducer]:as lznc])
+  (:require [ham-fisted.lazy-noncaching :refer [coll-reducer]:as lznc]
+            [ham-fisted.BitmapTrie :as bm]
+            [ham-fisted.ChunkedVec :as cv])
   (:refer-clojure :exclude [frequencies object-array range group-by]))
 
 
 (declare make-immut)
 
 
-(defn- reload-module
-  [fpath]
-  (js-delete (.-cache js/require) (.resolve js/require fpath))
-  (js/require fpath))
+;; (defn- reload-module
+;;   [fpath]
+;;   (js-delete (.-cache js/require) (.resolve js/require fpath))
+;;   (js/require fpath))
 
 
-(def bm-module (reload-module "./BitmapTrie.js"))
-(def cv-module (reload-module "./ChunkedVec.js"))
+;; (def bm-module (reload-module "./BitmapTrie.js"))
+;; (def cv-module (reload-module "./ChunkedVec.js"))
 
 (defn fhash
   "Faster hash method specifically for numbers - comparisons are reordered."
@@ -25,39 +27,39 @@
     :else
     (hash item)))
 
-(def raw-provider (aget bm-module "defaultProvider"))
+(def raw-provider bm/defaultProvider)
+(def default-hash-provider (js-obj "hash" fhash
+                                   "equals" =
+                                   "isReduced" reduced?
+                                   "unreduce" #(if (reduced? %) (deref %) %)
+                                   "print" println))
 
-(def default-provider (js-obj "hash" fhash
-                              "equals" =
-                              "isReduced" reduced?
-                              "unreduce" #(if (reduced? %) (deref %) %)
-                              "print" println))
+(def ^:private bm-cons bm/makeTrie)
+(def ^:private ht-cons bm/makeHashTable)
+(def ^:private mapProxy bm/mapProxy)
+(def ^:private indexedAccum bm/indexedAccum)
+(def ^:private cv-cons cv/makeChunkedVec)
+(def ^:private sizeIfPossible bm/sizeIfPossible)
+(def ^:private idxAcc cv/indexedAccum)
+(def ^:private RangeType cv/Range)
 
-(def ^:private bm-cons (aget bm-module "makeTrie"))
-(def ^:private ht-cons (aget bm-module "makeHashTable"))
-(def ^:private mapProxy (aget bm-module "mapProxy"))
-(def ^:private rot-left (aget bm-module "rotLeft"))
-(def indexedAccum (aget cv-module "indexedAccum"))
-(def ^:private cv-cons (aget cv-module "makeChunkedVec"))
-(def ^:private sizeIfPossible (aget bm-module "sizeIfPossible"))
-(def ^:private idxAcc (aget cv-module "indexedAccum"))
-(def ^:private RangeType (.-Range cv-module))
 
 (extend-type RangeType
   IReduce
-  (-reduce ([r rfn] (.reduce bm-module default-provider rfn r))
+  (-reduce
+    ([r rfn] (bm/reduce1 default-hash-provider rfn r))
     ([r rfn acc] (.reduce r rfn acc))))
 
 (defn range
   ([] (cljs.core/range))
-  ([end] (.range cv-module 0 end 1 default-provider))
-  ([start end] (.range cv-module start end 1 default-provider))
-  ([start end step] (.range cv-module start end step default-provider)))
+  ([end] (cv/range 0 end 1 default-hash-provider))
+  ([start end] (cv/range start end 1 default-hash-provider))
+  ([start end step] (cv/range start end step default-hash-provider)))
 
 
 (defn coll-reduce
-  ([coll rfn] (.reduce1 bm-module default-provider rfn (coll-reducer coll)))
-  ([coll rfn init] (.reduce bm-module default-provider rfn init (coll-reducer coll))))
+  ([coll rfn] (bm/reduce1 default-hash-provider rfn (coll-reducer coll)))
+  ([coll rfn init] (bm/reduce default-hash-provider rfn init (coll-reducer coll))))
 
 
 (defn coll-transduce
@@ -81,16 +83,22 @@
   ([r l] (vector r l)))
 
 
+(defn mut-trie-map
+  ([] (bm-cons default-hash-provider))
+  ([data] (reduce-put! (bm-cons default-hash-provider) data))
+  ([xform data] (reduce-put! xform (bm-cons default-hash-provider) data)))
+
+
+(defn mut-hashtable-map
+  ([] (ht-cons default-hash-provider))
+  ([data] (reduce-put! (ht-cons default-hash-provider) data))
+  ([xform data] (reduce-put! xform (ht-cons default-hash-provider) data)))
+
+
 (defn mut-map
-  ([] (bm-cons default-provider))
-  ([data] (reduce-put! (bm-cons default-provider) data))
-  ([xform data] (reduce-put! xform (bm-cons default-provider) data)))
-
-
-(defn java-hashmap
-  ([] (ht-cons default-provider))
-  ([data] (reduce-put! (ht-cons default-provider) data))
-  ([xform data] (reduce-put! xform (ht-cons default-provider) data)))
+  ([] (mut-hashtable-map))
+  ([data] (mut-hashtable-map data))
+  ([xform data] (mut-hashtable-map xform data)))
 
 
 (defn js-map
@@ -99,10 +107,10 @@
   ([xform data] (coll-transduce data xform (fn [m v] (.set m (nth v 0) (nth v 1))) (js/Map.))))
 
 
-(def ^:private bm-type (.-BitmapTrie bm-module))
-(def ^:private hm-type (.-HashTable bm-module))
-(def ^:private cv-type (.-ChunkedVector cv-module))
-(def ^:private empty-map (java-hashmap))
+(def ^:private bm-type bm/BitmapTrie)
+(def ^:private hm-type bm/HashTable)
+(def ^:private cv-type cv/ChunkedVector)
+(def ^:private empty-map (mut-map))
 
 
 (deftype ImmutMap [^JS m]
@@ -137,7 +145,7 @@
   IEquiv
   (-equiv [this other] (equiv-map this other))
   IHash
-  (-hash [this] (.cache_unordered bm-module hash this))
+  (-hash [this] (bm/cache_unordered hash this))
   ILookup
   (-lookup [o k] (.get m k))
   (-lookup [o k nf] (.getOrDefault m k nf))
@@ -155,8 +163,8 @@
   (-invoke [this a] (.get m a))
   (-invoke [this a d] (.getOrDefault m a d))
   IReduce
-  (-reduce [this rfn] (.reduce bm-module rfn m))
-  (-reduce [this rfn init] (.reduce m rfn init))
+  (-reduce [this rfn] (bm/reduce1 default-hash-provider rfn m))
+  (-reduce [this rfn init] (bm/reduce default-hash-provider m rfn init))
   ISeqable
   (-seq [this] (seq m))
   IMeta
@@ -216,7 +224,7 @@
       ([this a d] (.getOrDefault this a d)))
     IReduce
     (-reduce
-      ([this rfn] (reduce rfn this))
+      ([this rfn] (bm/reduce1 default-hash-provider rfn this))
       ([this rfn init] (.reduce this rfn init)))
     IKVReduce
     (-kv-reduce [coll f init]
@@ -226,7 +234,7 @@
       (-write writer (.toString this)))))
 
 
-(def ^:private leaf-node-type (.-LeafNode bm-module))
+(def ^:private leaf-node-type bm/LeafNode)
 
 
 (extend-type leaf-node-type
@@ -271,25 +279,28 @@
 
 
 (defn immut-map
-  ([] (make-immut (java-hashmap)))
-  ([data] (make-immut (java-hashmap data))))
+  ([] (make-immut (mut-hashtable-map)))
+  ([data] (make-immut (mut-hashtable-map data)))
+  ([xform data] (make-immut (mut-hashtable-map xform data))))
 
 
 (extend-type cv-type
   ICounted
   (-count [this] (.size this))
   IReduce
-  (-reduce [this rfn init] (.reduce this rfn init)))
+  (-reduce
+    ([this rfn] (bm/reduce1 default-hash-provider rfn this))
+    ([this rfn init] (.reduce this rfn init))))
 
 
 (defn freq-rf
   ([] (freq-rf nil))
   ([options]
-   (let [mfn (get options :map-fn java-hashmap)
+   (let [mfn (get options :map-fn mut-hashtable-map)
          bifn (fn [k v] (if v (+ v 1) 1))]
      (fn
        ([] (mfn))
-       ([m] m)
+       ([m] (persistent! m))
        ([m v] (.compute ^JS m v bifn) m)))))
 
 
@@ -324,18 +335,20 @@
                     (js/Array))))))
 
 (defn mut-list
-  ([] (cv-cons default-provider))
-  ([data] (doto (cv-cons default-provider)
-            (.addAll data))))
+  ([] (cv-cons default-hash-provider))
+  ([data] (doto (cv-cons default-hash-provider)
+            (.addAll data)))
+  ([xform data] (doto (cv-cons default-hash-provider)
+                  (.addAll (coll-reducer (eduction xform data))))))
 
 
 (defn group-by-reducer
   ([reducer coll] (group-by-reducer nil reducer nil coll))
   ([key-fn reducer coll] (group-by-reducer key-fn reducer nil coll))
   ([key-fn reducer options coll]
-   (. bm-module groupByReduce default-provider java-hashmap key-fn reducer reducer
-      (if (get options :skip-finalize?) nil reducer)
-      (coll-reducer coll))))
+   (bm/groupByReduce default-hash-provider mut-hashtable-map key-fn reducer reducer
+                     (if (get options :skip-finalize?) nil reducer)
+                     (coll-reducer coll))))
 
 
 (defn group-by
@@ -376,12 +389,12 @@
 (defn sum-n-elems
   "Return a map of :sum :n-elems from a sequence of numbers."
   [data]
-  (let [^JS s (reduce-reducer (consumer-reducer (.-sum cv-module)) data)]
+  (let [^JS s (reduce-reducer (consumer-reducer cv/sum) data)]
     {:n-elems (.-n s)
      :sum (.-s s)}))
 
 
-(def ^{:doc "Summation reducer"} sum-r (consumer-reducer (.-sum cv-module) #(.-s ^JS %)))
+(def ^{:doc "Summation reducer"} sum-r (consumer-reducer cv/sum #(.-s ^JS %)))
 
 
 (defn sum
@@ -390,7 +403,7 @@
   (reduce-reducer sum-r data))
 
 
-(def ^{:doc "Mean reducer"} mean-r (consumer-reducer (.-sum cv-module)
+(def ^{:doc "Mean reducer"} mean-r (consumer-reducer cv/sum
                                                      #(/ (.-s ^JS %) (.-n ^JS %))))
 
 (defn mean
@@ -400,11 +413,11 @@
 
 (defn mmax-key-r
   "Max key reducer"
-  [key-fn] (consumer-reducer #(.mmax_key cv-module key-fn)))
+  [key-fn] (consumer-reducer #(cv/mmax_key key-fn)))
 
 (defn mmin-key-r
    "Min key reducer"
-  [key-fn] (consumer-reducer #(.mmin_key cv-module key-fn)))
+  [key-fn] (consumer-reducer #(cv/mmin_key key-fn)))
 
 
 (defn mmax-key [key-fn data] (reduce-reducer (mmax-key-r key-fn) data))
@@ -425,9 +438,9 @@
   (dotimes [idx 10] (time (cljs.core/frequencies (eduction (map #(rem % 373373)) (range 1000000)))))
   ;;averages about 1220ms
 
-  (dotimes [idx 10] (time (frequencies (map #(rem % 373373)) {:map-fn mut-map} (range 1000000))))
+  (dotimes [idx 10] (time (frequencies (map #(rem % 373373)) {:map-fn mut-trie-map} (range 1000000))))
   ;;averages about 400ms
-  (dotimes [idx 10] (time (frequencies (map #(rem % 373373)) {:map-fn java-hashmap} (range 1000000))))
-  ;;averages about 125ms
+  (dotimes [idx 10] (time (frequencies (map #(rem % 373373)) {:map-fn mut-hashtable-map} (range 1000000))))
+  ;;averages about 80ms
 
   )
