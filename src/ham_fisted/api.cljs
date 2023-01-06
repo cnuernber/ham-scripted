@@ -2,10 +2,10 @@
   (:require [ham-fisted.lazy-noncaching :refer [coll-reducer]:as lznc]
             [ham-fisted.BitmapTrie :as bm]
             [ham-fisted.ChunkedVec :as cv])
-  (:refer-clojure :exclude [frequencies object-array range group-by]))
+  (:refer-clojure :exclude [frequencies object-array range group-by mapv]))
 
 
-(declare make-immut)
+(declare make-immut make-immut-list)
 
 
 ;; (defn- reload-module
@@ -113,67 +113,67 @@
 (def ^:private empty-map (mut-map))
 
 
-(deftype ImmutMap [^JS m]
+(deftype ImmutMap [m]
   Object
-  (toString [this] (.toString m))
-  (size [this] (.size m))
-  (reduce [this rfn init] (.reduce m rfn init))
-  (keys [coll] (.keys m))
-  (entries [coll] (.entries m))
-  (values [coll] (.values m))
-  (has [coll k] (.has m k))
-  (get [coll k nf] (.getOrDefault m k nf))
-  (forEach [coll f] (.forEach m f))
+  (toString [this] (.toString ^JS m))
+  (size [this] (.size ^JS m))
+  (reduce [this rfn init] (.reduce ^JS m rfn init))
+  (keys [coll] (.keys ^JS m))
+  (entries [coll] (.entries ^JS m))
+  (values [coll] (.values ^JS m))
+  (has [coll k] (.has ^JS m k))
+  (get [coll k nf] (.getOrDefault ^JS m k nf))
+  (forEach [coll f] (.forEach ^JS m f))
   ICounted
   (-count [this] (.size m))
-   ICollection
-   (-conj [coll o]
-     (if (vector? o)
-       (-assoc coll (-nth o 0) (-nth o 1))
-       (-> (reduce (fn [^JS m o]
-                     (if (vector? o)
-                       (.put m (-nth o 0) (-nth o 1))
-                       (throw (js/Error. "Invalid map conj data")))
-                     m)
-                   (.shallowClone m)
-                   o)
-           (make-immut))))
+  ICollection
+  (-conj [coll o]
+    (if (vector? o)
+      (-assoc coll (-nth o 0) (-nth o 1))
+      (-> (reduce (fn [^JS m o]
+                    (if (vector? o)
+                      (.put m (-nth o 0) (-nth o 1))
+                      (throw (js/Error. "Invalid map conj data")))
+                    m)
+                  (.shallowClone ^JS m)
+                  o)
+          (make-immut))))
   IEmptyableCollection
   (-empty [coll] (make-immut empty-map))
   IEditableCollection
-  (-as-transient [coll] (.shallowClone m))
+  (-as-transient [coll] (.shallowClone ^JS m))
   IEquiv
   (-equiv [this other] (equiv-map this other))
   IHash
   (-hash [this] (bm/cache_unordered hash this))
   ILookup
-  (-lookup [o k] (.get m k))
-  (-lookup [o k nf] (.getOrDefault m k nf))
+  (-lookup [o k] (.get ^JS m k))
+  (-lookup [o k nf] (.getOrDefault ^JS m k nf))
   IAssociative
-  (-contains-key? [coll k] (.containsKey m k))
-  (-assoc [coll k v] (let [^JS m (.shallowClone m)]
-                       (make-immut (.mutAssoc m k v))))
+  (-contains-key? [coll k] (.containsKey ^JS m k))
+  (-assoc [coll k v] (let [^JS m (.shallowClone ^JS m)]
+                       (make-immut (.mutAssoc ^JS m k v))))
   IFind
-  (-find [coll k] (.getNode m k))
+  (-find [coll k] (.getNode ^JS m k))
   IMap
   (-dissoc [coll k]
-   (let [^JS m (.shallowClone m)]
+   (let [^JS m (.shallowClone ^JS m)]
      (make-immut (.mutDissoc m k))))
   IFn
-  (-invoke [this a] (.get m a))
-  (-invoke [this a d] (.getOrDefault m a d))
+  (-invoke [this a] (.get ^JS m a))
+  (-invoke [this a d] (.getOrDefault ^JS m a d))
   IReduce
   (-reduce [this rfn] (bm/reduce1 default-hash-provider rfn m))
   (-reduce [this rfn init] (bm/reduce default-hash-provider m rfn init))
   ISeqable
   (-seq [this] (seq m))
   IMeta
-  (-meta [this] (.meta m))
+  (-meta [this] (.meta ^JS m))
   IWithMeta
-  (-with-meta [this k] (make-immut (.withMeta m k)))
+  (-with-meta [this k] (make-immut (.withMeta ^JS m k)))
   IKVReduce
   (-kv-reduce [coll f init]
-    (.reduceLeaves m #(f %1 (.-k ^JS %2) (.-v ^JS %2)) init))
+    (let [kk (do m)] (-kv-reduce kk f init)))
   IPrintWithWriter
   (-pr-writer [this writer opts]
     (-write writer (.toString m))))
@@ -285,12 +285,69 @@
 
 
 (extend-type cv-type
+  IHash
+  (-hash [this] (.hashCode this))
+  IEquiv
+  (-equiv [this o]
+    (if (== (count this) (count o))
+      (reduce (idxAcc (fn [acc idx v]
+                        (if (= (.get this idx)
+                               (-nth o idx))
+                          true
+                          (reduced false))))
+              true
+              this)
+      false))
+  ISequential
+  IIndexed
+  (-nth
+    ([this idx]
+     (let [l (.-length this)
+           idx (if (< idx 0)
+                 (+ idx l)
+                 idx)]
+       (when (and (>= idx 0) (< idx l)) (.get this idx))))
+    ([this idx dv]
+     (let [l (.-length this)
+           idx (if (< idx 0)
+                 (+ idx l)
+                 idx)]
+       (if (and (>= idx 0) (< idx l)) (.get this idx) dv))))
+  IFn
+  (-invoke
+    ([this idx] (-nth this idx))
+    ([this idx dv] (-nth this idx dv)))
+  ITransientCollection
+  (-conj! [this val]
+    (.mutAssoc this (.size this) val)
+    this)
+  (-persistent! [this] (make-immut-list this))
+
+  ITransientAssociative
+  (-assoc! [tcoll key val]
+    (if (number? key)
+      (-assoc-n! tcoll key val)
+      (throw (js/Error. "TransientVector's key for assoc! must be a number."))))
+
+  ITransientVector
+  (-assoc-n! [tcoll n val] (.mutAssoc ^JS tcoll n val))
+  (-pop! [tcoll] (.mutPop ^JS tcoll))
+  ILookup
+  (-lookup
+    ([coll k] (-lookup coll k nil))
+    ([coll k not-found]
+     (if (number? k)
+       (-nth coll k not-found)
+       not-found)))
   ICounted
-  (-count [this] (.size this))
+  (-count [this] (.-length this))
   IReduce
   (-reduce
     ([this rfn] (bm/reduce1 default-hash-provider rfn this))
-    ([this rfn init] (.reduce this rfn init))))
+    ([this rfn init] (.reduce this rfn init)))
+  IPrintWithWriter
+  (-pr-writer [this writer opts]
+    (-write writer (.toString ^JS this))))
 
 
 (defn freq-rf
@@ -340,6 +397,114 @@
             (.addAll data)))
   ([xform data] (doto (cv-cons default-hash-provider)
                   (.addAll (coll-reducer (eduction xform data))))))
+
+(deftype ImmutList [l]
+  Object
+  (size [this] (.size ^JS l))
+  (toArray [this] (.toArray ^JS l))
+  (reduce [this rfn init] (.reduce ^JS l rfn init))
+  (toString [this] (.toString ^JS l))
+  IEquiv
+  (-equiv [this o] (-equiv l o))
+  IHash
+  (-hash [this] (bm/cache_ordered hash this))
+  ICounted
+  (-count [this] (.size l))
+  IAssociative
+  (-contains-key? [coll k] (and (number? k) (>= k 0) (< k (.size l))))
+  (-assoc [coll k v]
+    (if (number? k)
+      (let [^JS l (.shallowClone ^JS l)]
+        (-> (.mutAssoc ^JS l k v)
+            (make-immut-list)))
+      (throw (js/Error. "Assoc'ed keys must be arrays"))))
+  ISequential
+  IIndexed
+  (-nth [this idx]
+    (let [len (.-length ^JS l)
+          idx (if (< idx 0)
+                (+ idx len)
+                idx)]
+      (when (and (>= idx 0) (< idx len))
+        (.get ^JS l idx))))
+  (-nth [this idx dv]
+   (let [len (.-length ^JS l)
+         idx (if (< idx 0)
+               (+ idx len)
+               idx)]
+     (if (and (>= idx 0) (< idx len))
+       (.get ^JS l idx)
+       dv)))
+  IFn
+  (-invoke [this idx] (-nth this idx))
+  (-invoke [this idx dv] (-nth this idx dv))
+  ICollection
+  (-conj [coll o]
+    (-assoc coll (.-length ^JS l) o))
+  ISeqable
+  (-seq [this] (seq ^JS l))
+  IMeta
+  (-meta [this] (.-meta ^JS l))
+  IWithMeta
+  (-with-meta [this k] (make-immut-list (.withMeta ^JS l k)))
+  IKVReduce
+  (-kv-reduce [coll f init] (-kv-reduce l f init))
+  IStack
+  (-peek [this]
+    (let [len (.-length ^JS l)]
+      (when (> len 0) (.get ^JS l (dec len)))))
+  (-pop [this]
+    (let [ll (.shallowClone ^JS l)]
+      (make-immut-list (.mutPop ^JS ll))))
+  IEmptyableCollection
+  (-empty [coll]
+    (let [rv (mut-list)]
+      (make-immut-list (.withMeta ^JS rv (.-meta ^JS l)))))
+  IEditableCollection
+  (-as-transient [this]
+    (.shallowClone ^JS l))
+  IPrintWithWriter
+  (-pr-writer [this writer opts]
+    (-write writer (.toString ^JS l))))
+
+
+(aset (.-prototype ImmutList) ITER_SYMBOL
+      (fn []
+        (this-as this
+          (let [subl (.-l ^JS this)]
+            (.call (aget subl ITER_SYMBOL) subl)))))
+
+
+(defn- make-immut-list
+  [l]
+  (ImmutList. l))
+
+
+(defn immut-list
+  ([] (make-immut-list (mut-list)))
+  ([data] (make-immut-list (mut-list data)))
+  ([xform data] (make-immut-list (mut-list xform data))))
+
+
+(defn mapv
+  ([map-fn arg]
+   (persistent! (mut-list (lznc/map map-fn) arg)))
+  ([map-fn arg1 arg2]
+   (persistent! (mut-list (lznc/map map-fn arg1 arg2))))
+  ([map-fn arg1 arg2 & args]
+   (persistent! (mut-list (apply lznc/map map-fn arg1 arg2 args)))))
+
+
+(defn concatv
+  [& args]
+  (->
+   (reduce (fn [rv v]
+             (when v
+               (.addAll ^JS rv v))
+             rv)
+           (mut-list)
+           (lznc/map coll-reducer args))
+   (persistent!)))
 
 
 (defn group-by-reducer

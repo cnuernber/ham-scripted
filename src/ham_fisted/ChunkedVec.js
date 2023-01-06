@@ -12,11 +12,12 @@ function indexedAccum(rfn, inN) {
 
 
 class ChunkedVector {
-    constructor(hp) {
+    constructor(hp, l, cap, data, meta) {
 	this.hp = hp;
-	this.length = 0;
-	this.capacity = 0;
-	this.data = Array();
+	this.length = l;
+	this.capacity = cap;
+	this.data = data;
+	this.meta = meta;
     }
     size() { return this.length; }
     ensureCapacity(newLen) {
@@ -35,6 +36,19 @@ class ChunkedVector {
 	    this.capacity = newLen;
 	}
 	return this.data;
+    }
+    hashCode() { return bm.hash_ordered(this.hp.hash, this); }
+    shallowClone() {
+	return new ChunkedVector(this.hp, this.length, this.capacity, bm.copyOf(this.data, this.data.length), this.meta);
+    }
+    clone() {
+	let rv = shallowClone();
+	let newData = rv.data;
+	let l = newData.length;
+	for(let idx = 0; idx < l; ++idx) {
+	    newData[idx] = setOwner(newData, idx, rv);
+	}
+	return rv;
     }
     add(v) {
 	let l = this.length;
@@ -95,6 +109,38 @@ class ChunkedVector {
     toString() {
 	return this.reduce((acc,v) => acc + (acc.length > 1 ? ", " + v : v), "[") + "]";
     }
+
+    setChunkOwner(ary, cidx, owner) {
+	let chunk = ary[cidx];
+	if(chunk == null || chunk.owner == owner)
+	    return chunk;
+	chunk = bm.copyOf(chunk, chunk.length);
+	chunk.owner = this;
+	ary[cidx] = chunk;
+	return chunk;
+    }
+
+    mutAssoc(idx, val) {
+	if(idx < 0 || idx > this.length)
+	    throw new Error("Invalid index: " + idx + " : " + this.length);
+	let l = this.length;
+	if(idx == this.length) {
+	    let data = this.ensureCapacity(this.length++);
+	    let chunk = this.setChunkOwner(data, Math.floor(l/32), this);
+	    chunk[l%32] = val;
+	} else {
+	    let chunk = this.setChunkOwner(this.data, Math.floor(l/32), this);
+	    chunk[l%32] = val;
+	}
+	return this;
+    }
+    mutPop() {
+	let l = this.length;
+	if(l == 0) throw new Error("Attempt to pop empty vector.");
+	mutAssoc(l-1, null);
+	--this.length;
+	return this;
+    }
     reduce(rfn, init) {
 	rfn = bm.twoArgInvoker(rfn);
 	const isReduced = this.hp.isReduced;
@@ -134,6 +180,12 @@ class ChunkedVector {
 	return this.reduce(indexedAccum((rv,idx,v)=> {
 	    rv[idx] = v; return rv;
 	}), Array(this.length));
+    }
+    meta() {
+	return this.meta;
+    }
+    withMeta(m) {
+	return new ChunkedList(this.hp, this.l, this.capacity, this.data, m);
     }
 }
 
@@ -240,7 +292,7 @@ class MMinKey {
 }
 
 exports.indexedAccum = indexedAccum;
-exports.makeChunkedVec = (hp) => new ChunkedVector(hp);
+exports.makeChunkedVec = (hp) => new ChunkedVector(hp, 0, 0, new Array());
 exports.addVal = (a,b) => a + b;
 exports.decVal = (a,b) => a - b;
 exports.range = range;
