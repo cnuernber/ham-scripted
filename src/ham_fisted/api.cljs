@@ -6,7 +6,7 @@
   (:refer-clojure :exclude [frequencies object-array range group-by mapv]))
 
 
-(declare make-immut make-immut-list empty-map)
+(declare make-immut make-immut-list empty-map range)
 
 
 ;; (defn- reload-module
@@ -80,6 +80,13 @@
   (-reduce
     ([r rfn] (bm/reduce1 default-hash-provider rfn r))
     ([r rfn acc] (.reduce r rfn acc)))
+  IMeta
+  (-meta [this] (.-meta this))
+  IWithMeta
+  (-with-meta [this m]
+    (let [r (range (.-start this) (.-end this) (.-step this))]
+      (aset r "meta" m)
+      r))
   IPrintWithWriter
   (-pr-writer [this writer opts]
     (-write writer "[")
