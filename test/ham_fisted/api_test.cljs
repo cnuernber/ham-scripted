@@ -14,3 +14,7 @@
   (is (= 90 (reduce + 0 (-> (into {} (map #(vector % %)) (hamf/range 10))
                             (hamf/update-values +)
                             vals)))))
+
+(deftest range-is-integer
+  (is (.isInteger ^JS (hamf/range 10)))
+  (is (not (.isInteger ^JS (hamf/range 0.5 10.5 0.5)))))

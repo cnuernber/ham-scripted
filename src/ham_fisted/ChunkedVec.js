@@ -200,7 +200,11 @@ class Range {
 	this.step = step;
 	this.length = Math.max(0, Math.floor((end-start)/step));
 	this.hp = hp;
+	this.isint = Number.isInteger(start) &&
+	    Number.isInteger(end) &&
+	    Number.isInteger(step);
     }
+    isInteger() { return this.isint; }
     hashCode() { return bm.cached_ordered(this.hp.hash, this); }
     size() { return this.length; }
     get(idx) {
