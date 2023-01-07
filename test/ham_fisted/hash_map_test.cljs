@@ -73,3 +73,13 @@
         (is (= dissoc-data (set (keys disdata))))
         (is (= data (set (keys alldata))))
         ))))
+
+
+(deftest compute-if-absent
+  (= 21 (->> (hamf/range 20)
+             (reduce (fn [acc v]
+                       (.computeIfAbsent ^JS acc (rem v 7) identity)
+                       acc)
+                     (hamf/mut-map))
+             (vals)
+             (reduce +))))

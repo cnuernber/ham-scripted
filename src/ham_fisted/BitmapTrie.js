@@ -1202,14 +1202,18 @@ class HashTable extends MapBase {
     getOrCreate(k) {
 	let hashcode = this.hash(k);
 	let bucket = hashcode & this.mask;
-	let entry = this.data[bucket];
-	if (entry == null) {
-	    let rv = LeafNode.newNode(this, k, null, hashcode);
-	    this.data[bucket] = rv;
-	    return this.checkResize(rv);
-	}
-	else {
-	    return this.checkResize(entry.getOrCreate(k, hashcode));
+	let ee = null, e = null;
+	for(e = this.data[bucket]; e != null && !((e.k == k) || this.equals(e.k, k)); e = e.nextNode)
+	    ee = e;
+	if(e != null) {
+	    return e;
+	} else {
+	    let lf = LeafNode.newNode(this,k,null,hashcode);
+	    if(ee != null)
+		ee.nextNode = lf;
+	    else
+		this.data[bucket] = lf;
+	    return this.checkResize(lf);
 	}
     }
     getNode(k) {
@@ -1253,6 +1257,25 @@ class HashTable extends MapBase {
 	    this.checkResize(null);
 	}
 	return newv;
+    }
+    computeIfAbsent(k, fn) {
+	let hashcode = this.hash(k);
+	let bucket = hashcode & this.mask;
+	let ee = null, e = null;
+	for(e = this.data[bucket]; e != null && !((e.k == k) || this.equals(e.k, k)); e = e.nextNode)
+	    ee = e;
+	if(e != null) {
+	    return e.v;
+	} else {
+	    let newv = fn(k);
+	    let lf = new LeafNode(this,k,newv,hashcode,null);
+	    if(ee != null)
+		ee.nextNode = lf;
+	    else
+		this.data[bucket] = lf;
+	    this.incLeaf();
+	    return this.checkResize(newv);
+	}
     }
 
     shallowClone() {
