@@ -175,7 +175,7 @@
     (let [kk (do m)] (-kv-reduce kk f init)))
   IPrintWithWriter
   (-pr-writer [this writer opts]
-    (-write writer (.toString m))))
+    (-pr-writer m writer opts)))
 
 
 
@@ -234,7 +234,16 @@
       (.reduceLeaves coll #(f %1 (.-k ^JS %2) (.-v ^JS %2)) init))
     IPrintWithWriter
     (-pr-writer [this writer opts]
-      (-write writer (.toString this)))))
+      (-write writer "{")
+      (.reduceLeaves this (fn [acc v]
+                            (when-not acc
+                              (-write writer ","))
+                            (-write writer (.-k ^JS v))
+                            (-write writer " ")
+                            (-write writer (.-v ^JS v))
+                            false)
+                     true)
+      (-write writer "}"))))
 
 
 (def ^:private leaf-node-type bm/LeafNode)
@@ -350,7 +359,13 @@
     ([this rfn init] (.reduce this rfn init)))
   IPrintWithWriter
   (-pr-writer [this writer opts]
-    (-write writer (.toString ^JS this))))
+    (-write writer "[")
+    (.reduce this (fn [acc v]
+                    (when-not acc (-write writer " "))
+                    (-write writer v)
+                    false)
+             true)
+    (-write writer "]")))
 
 
 (defn freq-rf
@@ -481,7 +496,7 @@
     (.shallowClone ^JS l))
   IPrintWithWriter
   (-pr-writer [this writer opts]
-    (-write writer (.toString ^JS l))))
+    (-write writer l)))
 
 
 (aset (.-prototype ImmutList) ITER_SYMBOL
