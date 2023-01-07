@@ -111,6 +111,11 @@
 (def ^:private hm-type bm/HashTable)
 (def ^:private cv-type cv/ChunkedVector)
 
+(defn- safe-write
+  [obj writer opts]
+  (if (satisfies? IPrintWithWriter obj)
+    (-pr-writer obj writer opts)
+    (-write writer obj)))
 
 (deftype ImmutMap [m]
   Object
@@ -238,9 +243,9 @@
       (.reduceLeaves this (fn [acc v]
                             (when-not acc
                               (-write writer ","))
-                            (-pr-writer (.-k ^JS v) writer opts)
+                            (safe-write (.-k ^JS v) writer opts)
                             (-write writer " ")
-                            (-pr-writer (.-v ^JS v) writer opts)
+                            (safe-write (.-v ^JS v) writer opts)
                             false)
                      true)
       (-write writer "}"))))
@@ -362,7 +367,7 @@
     (-write writer "[")
     (.reduce this (fn [acc v]
                     (when-not acc (-write writer " "))
-                    (-pr-writer v writer opts)
+                    (safe-write v writer opts)
                     false)
              true)
     (-write writer "]")))
