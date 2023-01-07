@@ -605,6 +605,12 @@ class LeafNode {
 	    return this;
 	}
     }
+    updateValues(owner, bifn) {
+	let rv = this.setOwner(owner);
+	rv.nextNode = rv.nextNode != null ? rv.nextNode.updateValues(owner,bfn) : null;
+	rv.v = bifn(rv.k, rv.v);
+	return rv;
+    }
     clone(nowner) {
 	return new LeafNode(nowner, this.k, this.v, this.hashcode,
 			    this.nextNode == null ? null :
@@ -802,6 +808,18 @@ class BitmapNode {
 	} else {
 	    return this;
 	}
+    }
+    updateValues(owner, bifn) {
+	let rv = this.setOwner(owner);
+	if(this != rv)
+	    rv.data = copyOf(rv.data, rv.data.length);
+
+	let l = bitCount32(this.bitmap);
+	let d = rv.data;
+	for(let idx = 0; idx < l; ++idx) {
+	    d[idx] = d[idx].updateValues(owner,bfn);
+	}
+	return rv;
     }
     iterator() {
 	const BMIter = class {
@@ -1082,6 +1100,11 @@ class BitmapTrie extends MapBase {
 	}
 	return this;
     }
+    mutUpdateValues(bfn) {
+	if(this.nullEntry != null)
+	    this.nullEntry = this.nullEntry.updateValues(this, bfn);
+	this.root = this.root.updateValues(this, bfn);
+    }
     iterator() {
 	const TrieIter = class {
 	    constructor(nullEntry, root) {
@@ -1267,6 +1290,18 @@ class HashTable extends MapBase {
 	    this.data[bucket] = entry.dissoc(this, 0, k, hashcode, true);
 	return this;
     }
+
+    mutUpdateValues(bfn) {
+	let d = this.data;
+	let l = d.length;
+	for(let idx = 0; idx < l; ++idx) {
+	    let e = d[idx];
+	    if (e != null)
+		d[idx] = e.updateValues(this, bfn);
+	}
+	return this;
+    }
+
     iterator() {
 	let TableIter = class {
 	    constructor(data) {

@@ -1,7 +1,8 @@
 (ns ham-fisted.api
   (:require [ham-fisted.lazy-noncaching :refer [coll-reducer]:as lznc]
             [ham-fisted.BitmapTrie :as bm]
-            [ham-fisted.ChunkedVec :as cv])
+            [ham-fisted.ChunkedVec :as cv]
+            [ham-fisted.protocols :as hamf-proto])
   (:refer-clojure :exclude [frequencies object-array range group-by mapv]))
 
 
@@ -178,6 +179,11 @@
   IKVReduce
   (-kv-reduce [coll f init]
     (let [kk (do m)] (-kv-reduce kk f init)))
+  hamf-proto/IUpdateValues
+  (-update-values [this bifn]
+    (let [rv (.shallowClone ^JS m)]
+      (.mutUpdateValues ^JS rv bifn)
+      (persistent! rv)))
   IPrintWithWriter
   (-pr-writer [this writer opts]
     (-pr-writer m writer opts)))
@@ -237,6 +243,9 @@
     IKVReduce
     (-kv-reduce [coll f init]
       (.reduceLeaves coll #(f %1 (.-k ^JS %2) (.-v ^JS %2)) init))
+    hamf-proto/IUpdateValues
+    (-update-values [this bifn]
+      (.mutUpdateValues ^JS this bifn))
     IPrintWithWriter
     (-pr-writer [this writer opts]
       (-write writer "{")
@@ -299,6 +308,15 @@
   ([] (make-immut (mut-hashtable-map)))
   ([data] (make-immut (mut-hashtable-map data)))
   ([xform data] (make-immut (mut-hashtable-map xform data))))
+
+
+(defn update-values
+  [m bifn]
+  (if (satisfies? hamf-proto/IUpdateValues m)
+    (hamf-proto/-update-values m bifn)
+    (immut-map (map (fn [e]
+                      [(key e) (bifn (key e) (val e))]))
+               m)))
 
 
 (extend-type cv-type
