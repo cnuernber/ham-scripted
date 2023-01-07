@@ -5,7 +5,7 @@
   (:refer-clojure :exclude [frequencies object-array range group-by mapv]))
 
 
-(declare make-immut make-immut-list)
+(declare make-immut make-immut-list empty-map)
 
 
 ;; (defn- reload-module
@@ -110,7 +110,6 @@
 (def ^:private bm-type bm/BitmapTrie)
 (def ^:private hm-type bm/HashTable)
 (def ^:private cv-type cv/ChunkedVector)
-(def ^:private empty-map (mut-map))
 
 
 (deftype ImmutMap [m]
@@ -139,7 +138,7 @@
                   o)
           (make-immut))))
   IEmptyableCollection
-  (-empty [coll] (make-immut empty-map))
+  (-empty [coll] empty-map)
   IEditableCollection
   (-as-transient [coll] (.shallowClone ^JS m))
   IEquiv
@@ -179,10 +178,14 @@
     (-write writer (.toString m))))
 
 
+
 (defn- make-immut
   [^JS m]
   (set! (.-cache_hash m) true)
   (ImmutMap. m))
+
+
+(def empty-map (make-immut (mut-map)))
 
 
 (defn extend-mut-map!
@@ -417,7 +420,9 @@
       (let [^JS l (.shallowClone ^JS l)]
         (-> (.mutAssoc ^JS l k v)
             (make-immut-list)))
-      (throw (js/Error. "Assoc'ed keys must be arrays"))))
+      (throw (js/Error. "Assoc'ed keys must be numbers"))))
+  IVector
+  (-assoc-n [coll k v] (-assoc coll k v))
   ISequential
   IIndexed
   (-nth [this idx]
@@ -500,10 +505,10 @@
   (->
    (reduce (fn [rv v]
              (when v
-               (.addAll ^JS rv v))
+               (.addAll ^JS rv (coll-reducer v)))
              rv)
            (mut-list)
-           (lznc/map coll-reducer args))
+           args)
    (persistent!)))
 
 

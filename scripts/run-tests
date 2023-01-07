@@ -1,0 +1,3 @@
+#!/bin/bash
+
+clj -M:cljs compile test && node target/test.js

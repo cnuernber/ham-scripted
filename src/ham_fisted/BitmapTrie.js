@@ -286,7 +286,7 @@ function jsIter(arg) {
 class Map1Impl {
     constructor(hp, f, arg) {
 	this.hp = hp;
-	this.f = f;
+	this.f = oneArgInvoker(f);
 	this.arg = arg;
 	const sz = sizeIfPossible(arg);
 	if(sz != null) this.length = sz;
@@ -317,7 +317,7 @@ function lznc_map_1(hp, f, arg) {
 
 class Map2Impl {
     constructor(hp, f, lhs, rhs) {
-	this.f = f;
+	this.f = twoArgInvoker(f);
 	this.hp = hp;
 	this.lhs = lhs;
 	this.rhs = rhs;
@@ -508,11 +508,11 @@ class LeafNode {
 	this.hashcode = hash;
 	this.nextNode = nextNode;
 	if(this.hashcode == null)
-	    throw "Hashcode undefined";
+	    throw new Error("Hashcode undefined");
     }
-    static newNode(owner, k, hash) {
+    static newNode(owner, k, v, hash) {
 	owner.incLeaf();
-	return new LeafNode(owner, k, null, hash, null);
+	return new LeafNode(owner, k, v, hash, null);
     }
     clone(nowner) {
 	const rv = new LeafNode(nowner, this.k, this.v, this.hashcode, this.nextNode);
@@ -547,9 +547,9 @@ class LeafNode {
 	if(this.owner.equals(k, this.k))
 	    return this;
 	if(this.nextNode != null)
-	    return this.nextNode.getOrCreate(k);
+	    return this.nextNode.getOrCreate(k, hash);
 	else {
-	    this.nextNode = LeafNode.newNode(this.owner, k, hash);
+	    this.nextNode = LeafNode.newNode(this.owner, k, null, hash);
 	    return this.nextNode;
 	}
     }
@@ -584,8 +584,7 @@ class LeafNode {
 	    if(retval.nextNode != null) {
 		retval.nextNode = retval.nextNode.assoc(nowner, shift, k, hash, v);
 	    } else {
-		retval.nextNode = LeafNode.newNode(nowner,k,this.hashcode);
-		retval.nextNode.v = v;
+		retval.nextNode = LeafNode.newNode(nowner,k,v,this.hashcode);
 	    }
 	}
 	return retval;
@@ -669,7 +668,7 @@ class BitmapNode {
 			      Array(leaf, null, null, null));
     }
     clone(nowner) {
-	const rv = new BitmapNode(nowner, this.shift, this.bitmap, copyOf(this.data, this.dat.length));
+	const rv = new BitmapNode(nowner, this.shift, this.bitmap, copyOf(this.data, this.data.length));
 	const d = rv.data;
 	const l = d.length;
 	for(let idx = 0; idx < l; ++idx) {
@@ -688,7 +687,7 @@ class BitmapNode {
 	let index = bitIndex(bm, bpos);
 	if((bm & bpos) == 0) {
 	    let bmm = bm | bpos;
-	    let retval = LeafNode.newNode(this.owner, k, hash);
+	    let retval = LeafNode.newNode(this.owner, k, null, hash);
 	    this.data = insert(data, retval, index, bitCount32(bmm), false);
 	    this.bitmap = bmm;
 	    return retval;
@@ -773,7 +772,7 @@ class BitmapNode {
 	    return retval;
 	} else {
 	    let nbm = bm | bpos;
-	    retval.data = insert(this.data, LeafNode.newNode(nowner, k, hash), index,
+	    retval.data = insert(this.data, LeafNode.newNode(nowner, k, v, hash), index,
 				 bitCount32(nbm), forceCopy);
 	    retval.bitmap = nbm;
 	}
@@ -880,6 +879,7 @@ function mapProxy(m) {
     });
 }
 
+function nilstr(v) { return v == null ? "nil" : v; }
 
 //marker iface
 class MapBase {
@@ -992,8 +992,8 @@ class MapBase {
 
     toString() {
 	return this.reduceLeaves((acc, v) => { return (acc.length == 1) ?
-					       acc + v.getKey() + " " + v.getValue() :
-					       acc + ", " + v.getKey() + " " + v.getValue()},
+					       acc + nilstr(v.getKey()) + " " + nilstr(v.getValue()) :
+					       acc + ", " + nilstr(v.getKey()) + " " + nilstr(v.getValue())},
 				 "{") + "}";
     }
 };
@@ -1181,7 +1181,7 @@ class HashTable extends MapBase {
 	let bucket = hashcode & this.mask;
 	let entry = this.data[bucket];
 	if (entry == null) {
-	    let rv = LeafNode.newNode(this, k, hashcode);
+	    let rv = LeafNode.newNode(this, k, null, hashcode);
 	    this.data[bucket] = rv;
 	    return this.checkResize(rv);
 	}
@@ -1254,8 +1254,8 @@ class HashTable extends MapBase {
 	let bucket = hashcode & this.mask;
 	let entry = this.data[bucket];
 	this.data[bucket] = entry == null ?
-		  LeafNode.newNode(this, k, hashcode) :
-		  entry.assoc(this, 0, k, hashcode, v);
+	    LeafNode.newNode(this, k, v, hashcode) :
+	    entry.assoc(this, 0, k, hashcode, v);
 	return this;
     }
 

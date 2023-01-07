@@ -43,6 +43,7 @@
         rv))
     :else coll))
 
+
 (def reducedProvider (js-obj "isReduced" reduced?
                              "unreduce" #(if (reduced? %) (deref %) %)
                              "makeReduced" reduced
@@ -55,15 +56,15 @@
   ([f lhs rhs] (bm/lznc_map_2 reducedProvider f (coll-reducer lhs) (coll-reducer rhs)))
   ([f lhs rhs & args]
    (let [arg (js/Array)]
-     (.push arg lhs)
-     (.push arg rhs)
-     (reduce (fn [acc v] (.push acc v) acc) arg args)
+     (.push arg (coll-reducer lhs))
+     (.push arg (coll-reducer rhs))
+     (reduce (fn [acc v] (.push acc (coll-reducer v)) acc) arg args)
      (bm/lznc_map_n reducedProvider f arg))))
 
 
 (defn filter
   ([f] (cljs.core/filter f))
-  ([f arg] (if (nil? arg) '() (bm/lznc_filter reducedProvider f arg))))
+  ([f arg] (if (nil? arg) '() (bm/lznc_filter reducedProvider f (coll-reducer arg)))))
 
 
 (defn remove
