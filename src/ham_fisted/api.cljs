@@ -371,9 +371,20 @@
    (coll-transduce data xform (freq-rf options))))
 
 
-(defn indexed-acc-fn
+(defn indexed-accum-fn
   [rf]
   (idxAcc rf))
+
+
+(defn constant-count
+  "Constant time count.  Returns nil if input doesn't have a constant time count."
+  [data]
+  (if (nil? data)
+    0
+    (if-let [sz (sizeIfPossible data)]
+      sz
+      (when (satisfies? ICounted data)
+        (count data)))))
 
 
 (defn object-array
@@ -386,12 +397,12 @@
      (.-toArray ^JS data)
      (.toArray ^JS data)
      :else
-     (if-let [sz (sizeIfPossible data)]
+     (if-let [sz (constant-count data)]
        (coll-reduce data,
-                    (indexed-acc-fn (fn [acc idx v] (aset acc idx v) acc))
+                    (indexed-accum-fn (fn [acc idx v] (aset acc idx v) acc))
                     (js/Array sz))
        (coll-reduce data
-                    (indexed-acc-fn (fn [acc idx v] (.push acc v) acc))
+                    (indexed-accum-fn (fn [acc idx v] (.push acc v) acc))
                     (js/Array))))))
 
 (defn mut-list
