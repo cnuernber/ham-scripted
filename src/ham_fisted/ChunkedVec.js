@@ -203,6 +203,11 @@ class Range {
     }
     hashCode() { return bm.cached_ordered(this.hp.hash, this); }
     size() { return this.length; }
+    get(idx) {
+	if(idx < 0 || idx >= this.length)
+	    throw new Error("Index out of range:" + idx + " : " + this.length);
+	return this.start + this.step * idx;
+    }
     reduce(rfn,acc) {
 	const isReduced = this.hp.isReduced;
 	const unreduce = this.hp.unreduce;

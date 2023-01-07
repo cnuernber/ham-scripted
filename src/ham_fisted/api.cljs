@@ -42,14 +42,52 @@
 (def ^:private cv-cons cv/makeChunkedVec)
 (def ^:private sizeIfPossible bm/sizeIfPossible)
 (def ^:private idxAcc cv/indexedAccum)
-(def ^:private RangeType cv/Range)
+(def RangeType cv/Range)
 
 
 (extend-type RangeType
+  IHash
+  (-hash [this] (.hashCode this))
+  IEquiv
+  (-equiv [this o]
+    (if (and (satisfies? ICounted o) (== (count this) (count o)))
+      (reduce (idxAcc (fn [acc idx v]
+                        (if (= (.get this idx)
+                               (-nth o idx))
+                          true
+                          (reduced false))))
+              true
+              this)
+      false))
+  IIndexed
+  (-nth
+    ([this idx] (-nth this idx nil))
+    ([this idx dv]
+     (let [idx
+           (if (< idx 0)
+             (+ idx (.-length this))
+             idx)]
+       (if (and (>= idx 0) (< idx (.-length this)))
+         (.get this idx)
+         dv))))
+  IFn
+  (-invoke
+    ([this idx] (-nth this idx))
+    ([this idx dv] (-nth this idx dv)))
+  ICounted
+  (-count [this] (.-length this))
   IReduce
   (-reduce
     ([r rfn] (bm/reduce1 default-hash-provider rfn r))
-    ([r rfn acc] (.reduce r rfn acc))))
+    ([r rfn acc] (.reduce r rfn acc)))
+  IPrintWithWriter
+  (-pr-writer [this writer opts]
+    (-write writer "[")
+    (.reduce this (fn [acc v] (when-not acc (-write writer " "))
+              (-write writer v)
+              false)
+             true)
+    (-write writer "]")))
 
 (defn range
   ([] (cljs.core/range))
