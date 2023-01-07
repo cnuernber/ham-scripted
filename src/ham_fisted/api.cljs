@@ -238,9 +238,9 @@
       (.reduceLeaves this (fn [acc v]
                             (when-not acc
                               (-write writer ","))
-                            (-write writer (.-k ^JS v))
+                            (-pr-writer (.-k ^JS v) writer opts)
                             (-write writer " ")
-                            (-write writer (.-v ^JS v))
+                            (-pr-writer (.-v ^JS v) writer opts)
                             false)
                      true)
       (-write writer "}"))))
@@ -362,7 +362,7 @@
     (-write writer "[")
     (.reduce this (fn [acc v]
                     (when-not acc (-write writer " "))
-                    (-write writer v)
+                    (-pr-writer v writer opts)
                     false)
              true)
     (-write writer "]")))
