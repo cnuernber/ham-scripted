@@ -189,19 +189,19 @@ function consumerAccum(acc, v) {
 }
 
 function noArgInvoker(rfn) {
-    return rfn.cljs$core$IFn$_invoke$arity$0 ? rfn.cljs$core$IFn$_invoke$arity$0 : rfn;
+    return rfn.cljs$core$IFn$_invoke$arity$0 ? rfn.cljs$core$IFn$_invoke$arity$0.bind(rfn) : rfn;
 }
 
 function oneArgInvoker(rfn) {
-    return rfn.cljs$core$IFn$_invoke$arity$1 ? rfn.cljs$core$IFn$_invoke$arity$1 : rfn;
+    return rfn.cljs$core$IFn$_invoke$arity$1 ? rfn.cljs$core$IFn$_invoke$arity$1.bind(rfn) : rfn;
 }
 
 function twoArgInvoker(rfn) {
-    return rfn.cljs$core$IFn$_invoke$arity$2 ? rfn.cljs$core$IFn$_invoke$arity$2 : rfn;
+    return rfn.cljs$core$IFn$_invoke$arity$2 ? rfn.cljs$core$IFn$_invoke$arity$2.bind(rfn) : rfn;
 }
 
 function threeArgInvoker(rfn) {
-    return rfn.cljs$core$IFn$_invoke$arity$3 ? rfn.cljs$core$IFn$_invoke$arity$3 : rfn;
+    return rfn.cljs$core$IFn$_invoke$arity$3 ? rfn.cljs$core$IFn$_invoke$arity$3.bind(rfn) : rfn;
 }
 
 function iterReduce(hp, rfn, acc, coll) {
