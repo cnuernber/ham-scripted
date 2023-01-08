@@ -3,6 +3,8 @@
             [ham-fisted.lazy-noncaching :as lznc]
             [clojure.test :refer [deftest is are]]))
 
+(deftest hash-nil
+  (= (hash [1 nil 2]) (hash (hamf/mut-list [1 nil 2]))))
 
 
 (defn =vec

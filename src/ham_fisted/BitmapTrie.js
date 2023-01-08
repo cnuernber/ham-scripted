@@ -144,7 +144,8 @@ function mix_collection_hash(hashBasis, count) {
 }
 
 function objHashCode(hashfn, obj) {
-    if(typeof(obj.hashCode) === "function")
+    if(obj == null) return 0;
+    else if(typeof(obj.hashCode) === "function")
 	return obj.hashCode();
     else if (Array.isArray(obj))
 	return hash_ordered(hashfn, obj);

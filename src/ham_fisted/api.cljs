@@ -205,7 +205,7 @@
   [obj writer opts]
   (if (satisfies? IPrintWithWriter obj)
     (-pr-writer obj writer opts)
-    (-write writer obj)))
+    (-write writer (if (nil? obj) "nil" obj))))
 
 (deftype ImmutMap [m]
   Object

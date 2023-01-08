@@ -11,6 +11,11 @@ function indexedAccum(rfn, inN) {
 }
 
 
+function safeStr(obj) {
+    return obj == null ? "nil" : obj;
+}
+
+
 class ChunkedVector {
     constructor(hp, l, cap, data, meta) {
 	this.hp = hp;
@@ -107,7 +112,8 @@ class ChunkedVector {
 	}
     }
     toString() {
-	return this.reduce((acc,v) => acc + (acc.length > 1 ? ", " + v : v), "[") + "]";
+	return this.reduce((acc,v) => acc + (acc.length > 1 ? " " + safeStr(v) :
+					     safeStr(v)), "[") + "]";
     }
 
     setChunkOwner(ary, cidx, owner) {
