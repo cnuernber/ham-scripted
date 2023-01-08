@@ -650,12 +650,35 @@
      ([acc] (fin-fn (.deref acc))))))
 
 
+(defn is-nan?
+  "Generalized is nan - returns true for nil - booleans are considered numbers"
+  [data]
+  (or (not (or (boolean? data) (number? data))) (js/isNaN data)))
+
+
+(defn is-not-nan?
+  "Generalized is not nan - returns false for nil - booleans are considered numbers"
+  [data]
+  (and (or (boolean? data) (number? data)) (not (js/isNaN data))))
+
+
+(defn apply-nan-strategy
+  [options data]
+  (case (get options :nan-strategy :remove)
+    :remove (lznc/filter is-not-nan? data)
+    :exception (lznc/map #(if (is-nan? %)
+                            (throw (js/Error. "Nan Detected"))
+                            %)
+                         data)
+    :keep data))
+
 (defn sum-n-elems
   "Return a map of :sum :n-elems from a sequence of numbers."
-  [data]
-  (let [^JS s (reduce-reducer (consumer-reducer cv/sum) data)]
-    {:n-elems (.-n s)
-     :sum (.-s s)}))
+  ([options data]
+   (let [^JS s (reduce-reducer (consumer-reducer cv/sum) (apply-nan-strategy options data))]
+     {:n-elems (.-n s)
+      :sum (.-s s)}))
+  ([data] (sum-n-elems nil data)))
 
 
 (def ^{:doc "Summation reducer"} sum-r (consumer-reducer cv/sum #(.-s ^JS %)))
@@ -663,8 +686,8 @@
 
 (defn sum
   "Sum of a sequence of numbers."
-  [data]
-  (reduce-reducer sum-r data))
+  ([data] (sum nil data))
+  ([options data] (reduce-reducer sum-r (apply-nan-strategy options data))))
 
 
 (def ^{:doc "Mean reducer"} mean-r (consumer-reducer cv/sum
@@ -672,8 +695,42 @@
 
 (defn mean
   "Mean of a sequence of numbers."
-  [data]
-  (reduce-reducer mean-r data))
+  ([options data] (reduce-reducer mean-r (apply-nan-strategy options data)))
+  ([data] (mean nil data)))
+
+
+(deftype VarReducer [^:unsynchronized-mutable c
+                     ^:unsynchronized-mutable m
+                     ^:unsynchronized-mutable ss]
+  Object
+  (accept [this e]
+    (let [c' (inc c)
+          m' (+ m (/ (- e m) c'))
+          ss' (+ ss (* (- e m') (- e m)))]
+      (set! c c')
+      (set! m m')
+      (set! ss ss')))
+  (deref [this]
+    (cond
+      (== c 0) js/NaN
+      (== c 1) 0
+      :else
+      (/ ss (dec c)))))
+
+
+(def ^{:dec "Variance Reducer"} var-r (consumer-reducer #(VarReducer. 0 0 0)))
+
+
+(defn variance
+  ([options data]
+   (reduce-reducer var-r (apply-nan-strategy options data)))
+  ([data] (variance nil data)))
+
+
+(defn standard-deviation
+  ([options data] (Math/sqrt (variance options data)))
+  ([data] (standard-deviation nil data)))
+
 
 (defn mmax-key-r
   "Max key reducer"
