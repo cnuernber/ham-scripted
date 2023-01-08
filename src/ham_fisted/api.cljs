@@ -6,7 +6,7 @@
   (:refer-clojure :exclude [frequencies object-array range group-by mapv]))
 
 
-(declare make-immut make-immut-list empty-map range)
+(declare make-immut make-immut-list empty-map range constant-count)
 
 
 ;; (defn- reload-module
@@ -108,11 +108,55 @@
   ([coll rfn init] (bm/reduce default-hash-provider rfn init (coll-reducer coll))))
 
 
+(defn constant-count
+  "Constant time count.  Returns nil if input doesn't have a constant time count."
+  [data]
+  (if (nil? data)
+    0
+    (if-let [sz (sizeIfPossible data)]
+      sz
+      (when (satisfies? ICounted data)
+        (count data)))))
+
+
 (defn coll-transduce
   ([coll xform rfn]
    (coll-transduce coll xform rfn (rfn)))
   ([coll xform rfn init]
    (coll-reduce coll (xform rfn) init)))
+
+
+(defn hash-ordered
+  "Calculate the hashcode of an ordered container"
+  [coll]
+  (bm/hash_ordered hash (coll-reducer coll)))
+
+
+(defn hash-unordered
+  "Calculate the hashcode of an unordered container"
+  [coll]
+  (bm/hash_unordered hash (coll-reducer coll)))
+
+
+(defn cache-ordered
+  "Cache and return the hashcode of an ordered container"
+  [coll]
+  (if-let [h (aget coll "_hash")]
+    h
+    (do
+      (let [rv (hash-ordered coll)]
+        (aset coll "_hash" rv)
+        rv))))
+
+
+(defn cache-unordered
+  [coll]
+  (if-let [h (aget coll "_hash")]
+    h
+    (do
+      (let [rv (hash-unordered coll)]
+        (aset coll "_hash" rv)
+        rv))))
 
 
 (defn reduce-put!
@@ -457,17 +501,6 @@
 (defn indexed-accum-fn
   [rf]
   (idxAcc rf))
-
-
-(defn constant-count
-  "Constant time count.  Returns nil if input doesn't have a constant time count."
-  [data]
-  (if (nil? data)
-    0
-    (if-let [sz (sizeIfPossible data)]
-      sz
-      (when (satisfies? ICounted data)
-        (count data)))))
 
 
 (defn object-array
