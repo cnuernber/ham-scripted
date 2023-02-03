@@ -47,11 +47,11 @@ class ChunkedVector {
 	return new ChunkedVector(this.hp, this.length, this.capacity, bm.copyOf(this.data, this.data.length), this.meta);
     }
     clone() {
-	let rv = shallowClone();
+	let rv = this.shallowClone();
 	let newData = rv.data;
 	let l = newData.length;
 	for(let idx = 0; idx < l; ++idx) {
-	    newData[idx] = setOwner(newData, idx, rv);
+	    newData[idx] = this.setOwner(newData, idx, rv);
 	}
 	return rv;
     }
@@ -143,7 +143,7 @@ class ChunkedVector {
     mutPop() {
 	let l = this.length;
 	if(l == 0) throw new Error("Attempt to pop empty vector.");
-	mutAssoc(l-1, null);
+	this.mutAssoc(l-1, null);
 	--this.length;
 	return this;
     }
@@ -191,7 +191,7 @@ class ChunkedVector {
 	return this.meta;
     }
     withMeta(m) {
-	return new ChunkedList(this.hp, this.l, this.capacity, this.data, m);
+	return new ChunkedVector(this.hp, this.l, this.capacity, this.data, m);
     }
 }
 

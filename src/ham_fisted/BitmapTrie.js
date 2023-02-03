@@ -210,7 +210,7 @@ function iterReduce(hp, rfn, acc, coll) {
     const unreduce = hp.unreduce;
     if(isReduced(acc)) return unreduce(acc);
     if(typeof(coll.next) == "function") {
-	for(i = coll.next(); !i.done; i = coll.next()) {
+	for(let i = coll.next(); !i.done; i = coll.next()) {
 	    acc = invoker(acc, i.value);
 	    if(isReduced(acc)) return unreduce(acc);
 	}
@@ -460,7 +460,7 @@ class ConcatImpl {
 
 function lznc_concat(hp, args) { return new ConcatImpl(hp, args); }
 
-let LFPPRops = ["length", "0", "1", "toString"];
+let LFPProps = ["length", "0", "1", "toString"];
 
 class LFP {
     get(target, key) {
@@ -474,10 +474,10 @@ class LFP {
 	return undefined;
     }
     ownKeys(target) {
-	return LFPprops;
+	return LFPProps;
     }
     has(target, key) {
-	return LFPprops.contains(key);
+	return LFPProps.contains(key);
     }
     getOwnPropertyDescriptor(target, key) {
 	switch(key) {
@@ -515,11 +515,6 @@ class LeafNode {
 	owner.incLeaf();
 	return new LeafNode(owner, k, v, hash, null);
     }
-    clone(nowner) {
-	const rv = new LeafNode(nowner, this.k, this.v, this.hashcode, this.nextNode);
-	rv.nextNode = rv.nextNode != null ? rv.nextNode.clone(nowner) : null;
-	return rv;
-    }
     asObject() {
 	if(this.proxy == null)
 	    this.proxy = leafProxy(this);
@@ -539,9 +534,8 @@ class LeafNode {
 	if(idx === 1) return this.v;
 	throw Error("Index out of range");
     }
-    nth(idx) { return get(idx); }
     nth(idx, d) {
-	return idx >= 0 && idx < 2 ? get(idx) : d;
+	return idx >= 0 && idx < 2 ? this.get(idx) : d;
     }
     size() { return 2; }
     getOrCreate(k, hash) {
@@ -608,7 +602,7 @@ class LeafNode {
     }
     updateValues(owner, bifn) {
 	let rv = this.setOwner(owner);
-	rv.nextNode = rv.nextNode != null ? rv.nextNode.updateValues(owner,bfn) : null;
+	rv.nextNode = rv.nextNode != null ? rv.nextNode.updateValues(owner,bifn) : null;
 	rv.v = bifn(rv.k, rv.v);
 	return rv;
     }
@@ -771,7 +765,7 @@ class BitmapNode {
 		    data[index] = entry.assoc(nowner, shift, k, hash, v);
 		} else {
 		    let nshift = incShift(shift);
-		    let nnode = BitmapNode.newNode(nowner, nshift, curEntry);
+		    let nnode = BitmapNode.newNode(nowner, nshift, entry);
 		    data[index] = nnode.assoc(nowner, nshift, k, hash, v);
 		}
 	    }
@@ -861,7 +855,7 @@ function mapProxy(m) {
 	    return target.get(key);
 	},
 	set(target, key, value) {
-	    n = target.getOrCreate(key);
+	    let n = target.getOrCreate(key);
 	    n.v = value;
 	    return n.v;
 	},
@@ -921,7 +915,7 @@ class MapBase {
 	let lf = this.getOrCreate(k);
 	lf.v = v;
     }
-    set(k,v) { put(k,v); }
+    set(k,v) { this.put(k,v); }
     get(k) {
 	let lf = this.getNode(k);
 	return lf != null ? lf.v : null;
@@ -931,8 +925,8 @@ class MapBase {
 	return lf != null ? lf.v : d;
     }
     containsKey(k) { return this.getNode(k) != null; }
-    has(k) { return containsKey(k); }
-    delete(k) { return remove(k); }
+    has(k) { return this.containsKey(k); }
+    delete(k) { return this.remove(k); }
     computeIfAbsent(k, f) {
 	let n = this.getOrCreate(k);
 	if(n.v == null)
@@ -942,7 +936,7 @@ class MapBase {
     computeIfPresent(k, bifn) {
 	let n = this.getNode(k);
 	if(n != null) {
-	    n.v = f(k,n.v);
+	    n.v = bifn(k,n.v);
 	    return n.v;
 	}
 	return null;
@@ -1056,7 +1050,7 @@ class BitmapTrie extends MapBase {
 	const unreduce = this.hp.unreduce;
 	const invoker = twoArgInvoker(rfn);
 	if(this.nullEntry != null && !isReduced(acc))
-	    acc = invoker(acc, nullEntry);
+	    acc = invoker(acc, this.nullEntry);
 	return unreduce(this.root.reduceLeaves(invoker, acc));
     }
     remove(k) {
@@ -1379,7 +1373,7 @@ class HashTable extends MapBase {
 }
 
 function makeHashTable(hashProvider, capacity, loadFactor) {
-    let hp = hashProvider != null ? hashProvider : defaultHashProvider;
+    let hp = hashProvider != null ? hashProvider : defaultProvider;
     let initCap = capacity != null ? capacity : 16;
     let lf = loadFactor != null ? loadFactor : 0.75;
     return HashTable.newHashTable(hp, lf, initCap);
