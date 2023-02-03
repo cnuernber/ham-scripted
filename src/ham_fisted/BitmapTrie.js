@@ -812,7 +812,7 @@ class BitmapNode {
 	let l = bitCount32(this.bitmap);
 	let d = rv.data;
 	for(let idx = 0; idx < l; ++idx) {
-	    d[idx] = d[idx].updateValues(owner,bfn);
+	    d[idx] = d[idx].updateValues(owner,bifn);
 	}
 	return rv;
     }
@@ -1076,7 +1076,7 @@ class BitmapTrie extends MapBase {
     }
     mutAssoc(k, v) {
 	if(k == null) {
-	    if(nullEntry == null)
+	    if(this.nullEntry == null)
 		this.put(k,v);
 	    else {
 		this.nullEntry = this.nullEntry.assoc(this, 0, k, 0, v);
@@ -1241,7 +1241,7 @@ class HashTable extends MapBase {
 	    if(newv != null)
 		e.v = newv;
 	    else
-		remove(k);
+		this.remove(k);
 	} else {
 	    let lf = new LeafNode(this, k, newv, hashcode, null);
 	    if(ee != null)
