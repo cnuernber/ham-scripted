@@ -50,6 +50,16 @@ const defaultProvider = {hash: defaultHash,
 			 isReduced: (v) => false,
 			 unreduce: (v) => v};
 
+
+function makeHashProvider(hashfn, eqfn, isredfn, unredfn, makeReducedfn, printfn) {
+    return { hash: hashfn,
+	     equals: eqfn,
+	     isReduced: isredfn,
+	     unreduce: unredfn,
+	     makeReduced: makeReducedfn,
+	     println: printfn};
+}
+
 function mask(shift,hash) {
     return (hash >>> shift) & 0x01f;
 }
@@ -1408,6 +1418,7 @@ exports.bitIndex = bitIndex;
 exports.nextPow2 = nextPow2;
 exports.insert = insert;
 exports.defaultHash = defaultHash;
+exports.makeHashProvider = makeHashProvider;
 exports.sizeIfPossible = sizeIfPossible;
 exports.makeTrie = makeBitmapTrie;
 exports.makeHashTable = makeHashTable;

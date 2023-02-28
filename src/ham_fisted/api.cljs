@@ -18,22 +18,8 @@
 ;; (def bm-module (reload-module "./BitmapTrie.js"))
 ;; (def cv-module (reload-module "./ChunkedVec.js"))
 
-(defn fhash
-  "Faster hash method specifically for numbers - comparisons are reordered."
-  [item]
-  (cond
-    (nil? item) 0
-    (number? item)
-    (bit-or 0 (Math/floor item))
-    :else
-    (hash item)))
-
 (def raw-provider bm/defaultProvider)
-(def default-hash-provider (js-obj "hash" fhash
-                                   "equals" =
-                                   "isReduced" reduced?
-                                   "unreduce" #(if (reduced? %) (deref %) %)
-                                   "print" println))
+(def default-hash-provider lznc/default-hash-provider)
 
 (def ^:private bm-cons bm/makeTrie)
 (def ^:private ht-cons bm/makeHashTable)

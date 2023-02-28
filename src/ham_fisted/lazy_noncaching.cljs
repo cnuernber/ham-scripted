@@ -3,6 +3,25 @@
   (:refer-clojure :exclude [map counted? count filter concat remove]))
 
 
+(defn fhash
+  "Faster hash method specifically for numbers - comparisons are reordered."
+  [item]
+  (cond
+    (nil? item) 0
+    (number? item)
+    (bit-or 0 (Math/floor item))
+    :else
+    (hash item)))
+
+
+(def default-hash-provider (bm/makeHashProvider
+                            fhash =
+                            reduced? #(if (reduced? %) (deref %) %)
+                            #(if (reduced? %) (deref %) %)
+                            reduced
+                            println))
+
+
 (defn js-iterator
   [obj]
   (if-let [iter-fn (aget obj (.-iterator js/Symbol))]
@@ -44,27 +63,21 @@
     :else coll))
 
 
-(def reducedProvider (js-obj "isReduced" reduced?
-                             "unreduce" #(if (reduced? %) (deref %) %)
-                             "makeReduced" reduced
-                             "print" println))
-
-
 (defn map
   ([f] (cljs.core/map f))
-  ([f arg] (if (nil? arg) '() (bm/lznc_map_1 reducedProvider f (coll-reducer arg))))
-  ([f lhs rhs] (bm/lznc_map_2 reducedProvider f (coll-reducer lhs) (coll-reducer rhs)))
+  ([f arg] (if (nil? arg) '() (bm/lznc_map_1 default-hash-provider f (coll-reducer arg))))
+  ([f lhs rhs] (bm/lznc_map_2 default-hash-provider f (coll-reducer lhs) (coll-reducer rhs)))
   ([f lhs rhs & args]
    (let [arg (js/Array)]
      (.push arg (coll-reducer lhs))
      (.push arg (coll-reducer rhs))
      (reduce (fn [acc v] (.push acc (coll-reducer v)) acc) arg args)
-     (bm/lznc_map_n reducedProvider f arg))))
+     (bm/lznc_map_n default-hash-provider f arg))))
 
 
 (defn filter
   ([f] (cljs.core/filter f))
-  ([f arg] (if (nil? arg) '() (bm/lznc_filter reducedProvider f (coll-reducer arg)))))
+  ([f arg] (if (nil? arg) '() (bm/lznc_filter default-hash-provider f (coll-reducer arg)))))
 
 
 (defn remove
@@ -77,7 +90,7 @@
   ([& args]
    (if-not (seq (rest args))
      (first args)
-     (bm/lznc_concat reducedProvider (map coll-reducer args)))))
+     (bm/lznc_concat default-hash-provider (map coll-reducer args)))))
 
 
 (defn- iter-seq->string
