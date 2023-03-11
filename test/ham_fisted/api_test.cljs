@@ -23,3 +23,7 @@
 
 (deftest invokers-work
   (= [1 2] (vec (lznc/map {:a 1 :b 2} [:a :b]))))
+
+
+(deftest immut-list-reduce
+  (is (= 55 (reduce + (hamf/mapv inc (range 10))))))

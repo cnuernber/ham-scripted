@@ -534,6 +534,9 @@
         (-> (.mutAssoc ^JS l k v)
             (make-immut-list)))
       (throw (js/Error. "Assoc'ed keys must be numbers"))))
+  IReduce
+  (-reduce [this rfn] (reduce rfn l))
+  (-reduce [this rfn init] (reduce rfn init l))
   IVector
   (-assoc-n [coll k v] (-assoc coll k v))
   ISequential
