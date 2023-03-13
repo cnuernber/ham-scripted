@@ -100,11 +100,13 @@ class ChunkedVector {
 		    idx -= cstart;
 		}
 	    } else {
-		let data = this.ensureCapacity(nl);
-		bm.reduce(null,
-			  indexedAccum((data,idx,v)=> { let ll = len + idx;
-							data[Math.floor(ll/32)][ll%32] = v;
-							return data}), data, newData);
+		const data = this.ensureCapacity(nl);
+		let ll = len | 0;
+		bm.reduce(null, (acc, v) => {
+		    data[ll/32 | 0][ll%32] = v;
+		    ++ll;
+		    return data;
+		}, null, newData);
 	    }
 	    this.length = nl;
 	} else {
@@ -128,16 +130,11 @@ class ChunkedVector {
 
     mutAssoc(idx, val) {
 	if(idx < 0 || idx > this.length)
-	    throw new Error("Invalid index: " + idx + " : " + this.length);
+	    throw new Error("Invalid index: " + idx + " > " + this.length);
 	let l = this.length;
-	if(idx == this.length) {
-	    let data = this.ensureCapacity(this.length++);
-	    let chunk = this.setChunkOwner(data, Math.floor(l/32), this);
-	    chunk[l%32] = val;
-	} else {
-	    let chunk = this.setChunkOwner(this.data, Math.floor(l/32), this);
-	    chunk[l%32] = val;
-	}
+	let data = (idx == l) ? this.ensureCapacity(this.length++) : this.data;
+	let chunk = this.setChunkOwner(data, Math.floor(idx/32), this);
+	chunk[idx%32] = val;
 	return this;
     }
     mutPop() {
@@ -306,8 +303,12 @@ class MMinKey {
     deref() { return this.v; }
 }
 
+function makeChunkedVec(hp, capacity) {
+    return new ChunkedVector(hp, 0, 0, new Array());
+}
+
 exports.indexedAccum = indexedAccum;
-exports.makeChunkedVec = (hp) => new ChunkedVector(hp, 0, 0, new Array());
+exports.makeChunkedVec = makeChunkedVec;
 exports.addVal = (a,b) => a + b;
 exports.decVal = (a,b) => a - b;
 exports.range = range;

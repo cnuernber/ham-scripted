@@ -27,3 +27,12 @@
 
 (deftest immut-list-reduce
   (is (= 55 (reduce + (hamf/mapv inc (range 10))))))
+
+
+(deftest assoc-mapv
+  (is (= [1 2 3 :a] (-> (hamf/mapv inc (range 4))
+                        (assoc 3 :a))))
+  (println "timing vector construction")
+  (dotimes [idx 10]
+    (time (dotimes [idx 1000]
+            (hamf/mut-list (range 2000))))))

@@ -509,10 +509,13 @@
 
 (defn mut-list
   ([] (cv-cons default-hash-provider))
-  ([data] (doto (cv-cons default-hash-provider)
-            (.addAll data)))
+  ([data] (doto (cv-cons default-hash-provider (constant-count data))
+            (.addAll (coll-reducer data))))
   ([xform data] (doto (cv-cons default-hash-provider)
-                  (.addAll (coll-reducer (eduction xform data))))))
+                  (.addAll #js{"length" (constant-count data)
+                               "reduce" (fn [rfn acc]
+                                          (let [rfn (xform rfn)]
+                                            (reduce rfn acc data)))}))))
 
 (deftype ImmutList [l]
   Object
@@ -609,7 +612,12 @@
 
 (defn mapv
   ([map-fn arg]
-   (persistent! (mut-list (lznc/map map-fn) arg)))
+   (persistent! (mut-list #js {"length" (constant-count arg)
+                               "reduce" (fn [rfn acc]
+                                          (reduce (fn [acc v]
+                                                    (rfn acc (map-fn v)))
+                                                  acc
+                                                  arg))})))
   ([map-fn arg1 arg2]
    (persistent! (mut-list (lznc/map map-fn arg1 arg2))))
   ([map-fn arg1 arg2 & args]
